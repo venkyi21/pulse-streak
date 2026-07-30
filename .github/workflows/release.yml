@@ -58,6 +58,29 @@ jobs:
             exit 1
           fi
 
+      # Without this, a tag build with missing secrets produces a silently
+      # UNSIGNED bundle that only fails much later, in the store console, with an
+      # error that does not mention signing. Fail here instead, where it is obvious.
+      - name: Signing secrets must be present for a tagged release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          missing=""
+          for name in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            eval "value=\${$name}"
+            [ -z "$value" ] && missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Missing repository secret(s):$missing — see Phase 3 of NEXT-STEPS.md."
+            echo "A release build without these would be unsigned and rejected at upload."
+            exit 1
+          fi
+          echo "All four signing secrets are present."
+
       - name: Build web payload and sync Capacitor
         run: |
           npm run build:www

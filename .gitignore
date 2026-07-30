@@ -8,6 +8,10 @@ key.properties
 *.p12
 *.pepk
 google-play-service-account*.json
+# A base64-encoded keystore IS the keystore. Same blast radius, so same rule.
+*.b64
+keystore.base64
+*.jks.txt
 
 # --- Node --------------------------------------------------------------------
 node_modules/

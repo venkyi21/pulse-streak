@@ -76,9 +76,28 @@ test('third-party licence attribution ships with the repo', () => {
 
 test('signing material can never be committed by accident', () => {
   const ignore = fs.readFileSync(path.join(ROOT, '.gitignore'), 'utf8');
-  for (const pattern of ['*.jks', '*.keystore', 'keystore.properties']) {
+  // *.b64 matters as much as *.jks: a base64-encoded keystore is the keystore.
+  // It was missed the first time round, which is exactly why this is a test.
+  for (const pattern of ['*.jks', '*.keystore', 'keystore.properties', '*.b64']) {
     assert.ok(ignore.includes(pattern), `.gitignore must exclude ${pattern}`);
   }
+});
+
+test('no signing material is actually tracked in the repo', () => {
+  const { execFileSync } = require('node:child_process');
+  const tracked = execFileSync('git', ['ls-files'], { cwd: ROOT, encoding: 'utf8' })
+    .split('\n').filter(Boolean);
+  const leaked = tracked.filter((f) =>
+    /\.(jks|keystore|p12|pepk|b64)$/i.test(f) || /(^|\/)keystore\.properties$/.test(f));
+  assert.deepEqual(leaked, [], `signing material is committed: ${leaked.join(', ')}`);
+});
+
+test('the keystore.properties template is committed but carries no real secret', () => {
+  const example = path.join(ROOT, 'android', 'keystore.properties.example');
+  if (!fs.existsSync(example)) return;   // android platform not scaffolded yet
+  const text = fs.readFileSync(example, 'utf8');
+  assert.match(text, /storeFile=/);
+  assert.match(text, /CHANGEME/, 'the template must ship with placeholder passwords only');
 });
 
 test('every release script referenced by the workflows exists', () => {
