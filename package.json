@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "description": "Pulse Streak — one-tap endless runner for kids (Phaser 3, single-file build)",
-  "license": "MIT",
+  "license": "UNLICENSED",
   "engines": {
     "node": ">=20"
   },
