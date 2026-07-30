@@ -1,0 +1,41 @@
+{
+  "name": "pulse-streak",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pulse Streak — one-tap endless runner for kids (Phaser 3, single-file build)",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test \"tests/**/*.test.js\"",
+    "test:unit": "node --test \"tests/unit/*.test.js\"",
+    "test:integration": "node --test \"tests/integration/*.test.js\"",
+    "test:watch": "node --test --watch \"tests/**/*.test.js\"",
+    "check": "node -e \"require('./tests/harness').loadGame().boot(); console.log('index.html parses, evaluates and boots clean')\"",
+    "build:www": "node scripts/build-www.js",
+    "version:sync": "node scripts/sync-version.js",
+    "version:check": "node scripts/sync-version.js --check",
+    "assets": "node scripts/make-store-assets.js",
+    "android:add": "npm run build:www && npx cap add android && npm run android:patch",
+    "android:patch": "node scripts/patch-android.js",
+    "android:sync": "npm run build:www && npx cap sync android && npm run version:sync",
+    "android:open": "npx cap open android",
+    "android:bundle": "npm run android:sync && cd android && gradlew.bat bundleRelease",
+    "android:apk": "npm run android:sync && cd android && gradlew.bat assembleRelease",
+    "release:preflight": "npm test && npm run check && npm run version:check"
+  },
+  "keywords": [
+    "phaser",
+    "game",
+    "endless-runner",
+    "kids"
+  ],
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/core": "^7.0.0"
+  }
+}

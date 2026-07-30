@@ -1,0 +1,815 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>PULSE STREAK</title>
+<style>
+  html,body{margin:0;padding:0;background:#0a0612;height:100%;overflow:hidden;font-family:'Segoe UI',Arial,sans-serif;}
+  #game-wrap{display:flex;justify-content:center;align-items:center;height:100%;}
+  canvas{image-rendering:pixelated;box-shadow:0 0 40px rgba(0,0,0,.6);}
+</style>
+</head>
+<body>
+<div id="game-wrap"></div>
+<script src="phaser.min.js"></script>
+<script>
+/* =========================================================================
+   PULSE STREAK
+   One-tap endless neon runner implementing the "Flappy Bird Evolution"
+   blueprint:
+     Phase 1 — Core Loop: single tap = jump, zero-friction retry, 3-second
+               intro ("TAP TO JUMP" + one obstacle type visible immediately).
+     Phase 2 — Meta-Progression: run currency (pulse shards) funds a shop
+               (Jump Boost, Shard Magnet, Guard Pulse) that lowers difficulty
+               over time.
+     Phase 3 — Dopamine Amplification: streak multiplier escalates screen
+               flash/shake, pitch-rising beeps, and a colour-shifting trail
+               as consecutive obstacles are cleared without a hit.
+     Phase 4 — Monetization: energy-gated plays, a free continue, and a
+               cosmetic trail-color gacha. NOTE: the old "watch ad" flows were
+               fake countdowns that always paid out; they were relabelled for
+               release rather than shipped as theatre. No ad SDK is present, so
+               the app makes no network calls and collects nothing.
+     Phase 5 — Retention & Social (SIMULATED, see README): a daily login
+               streak calendar bonus, and a local Top-10 leaderboard.
+   Built entirely on Phaser 3 (MIT, vendored locally as phaser.min.js).
+   All art is procedural (Graphics.generateTexture) — no external assets.
+   ========================================================================= */
+
+// Kept in lockstep with package.json by `npm run version:sync`, which also
+// derives the Android versionCode. A test fails if the two ever drift, so the
+// build a player is running is always identifiable from the menu footer.
+const APP_VERSION = '1.0.0';
+
+const W = 480, H = 800;
+const GROUND_Y = H - 90;
+const SAVE_KEY = 'pulse_streak_save_v1';
+
+// ---------- Persistence ----------
+// Some browsers throw a SecurityError reading/writing localStorage on a
+// file:// origin (e.g. an opaque/unique origin, or storage explicitly
+// disabled) instead of just returning null. An uncaught throw here would
+// happen on the very first line of MenuScene.create(), before anything is
+// drawn, producing a blank background with nothing rendered — so every
+// localStorage touch is wrapped and falls back to an in-memory object that
+// keeps the game playable for the session even if it can't persist.
+let _memFallback = null;
+function safeGetItem(key){
+  // Once a write has failed we are in session-only mode (Safari private mode
+  // and quota-exceeded both throw on setItem while getItem still works), so
+  // the in-memory copy is newer than anything storage can hand back — check it
+  // first, or every scene transition would reload a stale/default profile.
+  if(_memFallback !== null) return _memFallback;
+  try{ return localStorage.getItem(key); }
+  catch(e){ return _memFallback; }
+}
+function safeSetItem(key, value){
+  try{ localStorage.setItem(key, value); }
+  catch(e){ _memFallback = value; }
+}
+
+function loadSave(){
+  let raw = safeGetItem(SAVE_KEY);
+  let def = {
+    shards: 0,
+    best: 0,
+    upgrades: { jump: 0, magnet: 0, guard: 0 },
+    trails: ['0x37e6ff'],
+    equipped: '0x37e6ff',
+    leaderboard: [],
+    energy: { count: 5, last: Date.now() },
+    loginStreak: { lastDay: '', count: 0, claimedToday: false }
+  };
+  if(!raw) return def;
+  try{
+    let s = JSON.parse(raw);
+    return Object.assign(def, s, {
+      upgrades: Object.assign(def.upgrades, s.upgrades||{}),
+      energy: Object.assign(def.energy, s.energy||{}),
+      loginStreak: Object.assign(def.loginStreak, s.loginStreak||{})
+    });
+  }catch(e){ return def; }
+}
+function save(s){ safeSetItem(SAVE_KEY, JSON.stringify(s)); }
+
+const TRAIL_POOL = ['0x37e6ff','0xff4d9d','0xffdd3c','0x6bff8f','0xb56bff','0xff8a3d'];
+
+const ENERGY_MAX = 5;
+const ENERGY_REGEN_MS = 30000; // 30s/point for demo pacing; production would tune to ~20-30 min
+
+function regenEnergy(s){
+  const now = Date.now();
+  let elapsed = now - s.energy.last;
+  let gained = Math.floor(elapsed / ENERGY_REGEN_MS);
+  if(gained > 0 && s.energy.count < ENERGY_MAX){
+    s.energy.count = Math.min(ENERGY_MAX, s.energy.count + gained);
+    s.energy.last = now;
+  } else if(s.energy.count >= ENERGY_MAX){
+    s.energy.last = now;
+  }
+  return s;
+}
+
+// Whole seconds until the next energy point lands; 0 when the bar is full or a
+// point is already due. Drives the honest "come back in Ns" message that
+// replaced the fake rewarded-ad countdown.
+function energyEtaSeconds(s){
+  if(s.energy.count >= ENERGY_MAX) return 0;
+  const remaining = ENERGY_REGEN_MS - (Date.now() - s.energy.last);
+  return remaining <= 0 ? 0 : Math.ceil(remaining / 1000);
+}
+
+// Daily login streak — habit-anchoring loop (2026 retention research: reward
+// loops built from daily bonuses/streaks are a top driver of D1/D7 retention).
+function checkLoginStreak(s){
+  const today = new Date().toDateString();
+  if(s.loginStreak.lastDay === today) return s;
+  const y = new Date(); y.setDate(y.getDate()-1);
+  const wasYesterday = s.loginStreak.lastDay === y.toDateString();
+  s.loginStreak.count = wasYesterday ? s.loginStreak.count + 1 : 1;
+  s.loginStreak.lastDay = today;
+  s.loginStreak.claimedToday = false;
+  return s;
+}
+function loginStreakReward(day){
+  // day 1..7 cycle, escalating — day 7 is the big "don't break the chain" payout
+  const cycle = ((day-1) % 7) + 1;
+  return cycle * 10 + (cycle===7 ? 40 : 0);
+}
+
+// ---------- Boot: generate all textures procedurally (no image assets) ----------
+class BootScene extends Phaser.Scene{
+  constructor(){ super('Boot'); }
+  create(){
+    const g = this.add.graphics();
+
+    // Player — a round fluffy critter, drawn entirely from circles/ellipses.
+    // Kid-appeal checklist: near-spherical body, oversized eyes (roughly a
+    // third of the face), blush, tiny paws, open smile. Deliberately still
+    // 34x34, so the physics body, jump arc and collision difficulty are byte
+    // for byte what they were before the redesign.
+    g.clear();
+    // Dark rim first, slightly larger than everything on top of it, so the
+    // white critter keeps a hard silhouette against the bright meadow sky.
+    // Without this it dissolves into the background at speed.
+    g.fillStyle(0x2c4a52,1);
+    g.fillCircle(16,19,13.5); g.fillCircle(8.5,8,5); g.fillCircle(24.5,8,5);
+    g.fillCircle(4.2,15,4); g.fillCircle(4,20.5,3.6); g.fillCircle(7,26,4);
+    g.fillCircle(16,30.4,3.8);
+    g.fillEllipse(11.5,31.4,8.4,5.4); g.fillEllipse(22.5,31.4,8.4,5.4);
+    // back/underside in a cooler shade, offset down-right so it only ever
+    // shows as a crescent along the right and bottom (never above the head)
+    g.fillStyle(0xa9c6dc,1); g.fillCircle(19.5,21,12.2);
+    // ears peeking over the top
+    g.fillStyle(0xffffff,1); g.fillCircle(8.5,8,4); g.fillCircle(24.5,8,4);
+    g.fillStyle(0xffd9e2,1); g.fillCircle(8.5,8.5,1.8); g.fillCircle(24.5,8.5,1.8);
+    // main body + fur tufts breaking up the silhouette
+    g.fillStyle(0xffffff,1); g.fillCircle(16,19,12.6);
+    g.fillCircle(4.5,15,3.2); g.fillCircle(4,20.5,2.8); g.fillCircle(7,26,3.2);
+    g.fillCircle(16,30,3);
+    // eyes: big solid dark pupils with two glints. No iris ring — at 34px any
+    // rim is sub-pixel, and anti-aliasing smears it into something that reads
+    // as spectacles rather than an eye.
+    // A single clean glint per eye: a second highlight at this scale lands as
+    // one grey pixel and reads as a smudge, not a shine.
+    g.fillStyle(0x27263a,1); g.fillCircle(11.6,18.2,4.4); g.fillCircle(22,18.2,4.4);
+    g.fillStyle(0xffffff,1); g.fillCircle(13,16.4,1.9); g.fillCircle(23.4,16.4,1.9);
+    // blush
+    g.fillStyle(0xff97a8,0.8); g.fillCircle(6.6,23.5,2.6); g.fillCircle(27,23.5,2.6);
+    // snout, open smile, tongue
+    g.fillStyle(0xf0a24a,1); g.fillEllipse(16.8,22.6,3.4,2.2);
+    g.fillStyle(0x27263a,1); g.fillEllipse(16.8,25.2,5,3.8);
+    g.fillStyle(0xff8fa3,1); g.fillEllipse(16.8,26.4,2.8,1.9);
+    // paws
+    g.fillStyle(0xf6a45a,1);
+    g.fillEllipse(11.5,31.2,7,4.2); g.fillEllipse(22.5,31.2,7,4.2);
+    g.generateTexture('player',34,34); g.clear();
+
+    // Obstacle — a crested stork with its wings thrown open, facing the runner.
+    // Still exactly 50x50, so the Arcade body and the jump timing are unchanged.
+    // Black is the reserved hazard colour: nothing in the meadow background is
+    // allowed to use it, so the bird reads as danger against bright greens the
+    // way the old pink spike no longer could next to pink flowers.
+    const wing = (dir)=>{                       // dir: -1 left, +1 right
+      const cx = 25;
+      g.fillStyle(0x1b1b24,1);
+      // three overlapping feather masses sweeping up and out
+      g.fillEllipse(cx+dir*9, 24, 20, 13);
+      g.fillEllipse(cx+dir*17, 19, 20, 11);
+      g.fillEllipse(cx+dir*22, 14, 15, 9);
+      // primary feather tips, kept inside the 50px frame so they don't clip flat
+      g.fillTriangle(cx+dir*15,10, cx+dir*24,3.5, cx+dir*22,17);
+      g.fillTriangle(cx+dir*20,15, cx+dir*24.5,13, cx+dir*23,22);
+      // warm underwing flash, the reference's red inner edge
+      g.fillStyle(0xd7342a,1);
+      g.fillEllipse(cx+dir*9, 27.5, 15, 6);
+      g.fillEllipse(cx+dir*16, 23.5, 12, 5);
+    };
+    wing(-1); wing(1);
+    // tail, sweeping clear of the body so it reads as a tail and not a smudge
+    g.fillStyle(0xd7342a,1); g.fillTriangle(27,30, 44,37, 28,40);
+    g.fillStyle(0xf5913a,1); g.fillTriangle(28,32.5, 40,37, 28,39);
+    // body + neck in white, with a dark rim so it holds up on a light sky
+    g.fillStyle(0x1b1b24,1); g.fillEllipse(25,31,18,25); g.fillEllipse(25,17,10,17);
+    g.fillStyle(0xffffff,1); g.fillEllipse(25,31,15,22); g.fillEllipse(25,17,7,15);
+    // head
+    g.fillStyle(0x1b1b24,1); g.fillCircle(25,11,6);
+    g.fillStyle(0xffffff,1); g.fillCircle(25,11,4.8);
+    // crest — three red spikes, the silhouette's signature
+    g.fillStyle(0xd7342a,1);
+    g.fillTriangle(21,7, 23,0, 25,7); g.fillTriangle(24,6.5, 26.5,-0.5, 29,6.5);
+    g.fillTriangle(27,7.5, 30.5,2, 31,8.5);
+    // beak, pointed at the oncoming player
+    g.fillStyle(0xf5913a,1); g.fillTriangle(21,10, 11,13.5, 21,15);
+    // eye
+    g.fillStyle(0x1b1b24,1); g.fillCircle(23.4,10,2.1);
+    g.fillStyle(0xffffff,1); g.fillCircle(22.8,9.4,0.9);
+    // legs
+    g.fillStyle(0xf5913a,1);
+    g.fillRect(22,41,2.4,9); g.fillRect(27,41,2.4,9);
+    g.fillEllipse(22,49.4,7,3); g.fillEllipse(28,49.4,7,3);
+    g.generateTexture('stork',50,50); g.clear();
+
+    // shard (currency)
+    g.fillStyle(0x37e6ff,1);
+    g.fillTriangle(9,0, 18,9, 9,18); g.fillTriangle(9,0, 0,9, 9,18);
+    g.generateTexture('shard',18,18); g.clear();
+
+    // particle
+    g.fillStyle(0xffffff,1); g.fillCircle(4,4,4);
+    g.generateTexture('particle',8,8); g.clear();
+
+    // ---- Meadow background set ------------------------------------------
+    // Still zero assets: every layer below is a generated texture. The sky
+    // gradient is painted as strips rather than with fillGradientStyle, which
+    // is WebGL-only — strips look identical and survive a Canvas fallback.
+    const mixC = (a,b,t)=>(
+      (Math.round(((a>>16)&255)+(((b>>16)&255)-((a>>16)&255))*t)<<16) |
+      (Math.round(((a>>8)&255)+(((b>>8)&255)-((a>>8)&255))*t)<<8) |
+      Math.round((a&255)+((b&255)-(a&255))*t)
+    );
+    const STRIPS = 96;   // fine enough that the gradient shows no banding
+    for(let i=0;i<STRIPS;i++){
+      g.fillStyle(mixC(0xa9ecff,0xfff2d2,i/(STRIPS-1)),1);
+      g.fillRect(0, Math.floor(i*GROUND_Y/STRIPS), W, Math.ceil(GROUND_Y/STRIPS)+1);
+    }
+    g.generateTexture('sky',W,GROUND_Y); g.clear();
+
+    // sun — stacked halo rings instead of one translucent disc, which left a
+    // hard visible edge in the sky
+    g.fillStyle(0xfff4b8,0.16); g.fillCircle(92,92,90);
+    g.fillStyle(0xfff4b8,0.2);  g.fillCircle(92,92,76);
+    g.fillStyle(0xfff4b8,0.28); g.fillCircle(92,92,64);
+    g.fillStyle(0xffe873,1);    g.fillCircle(92,92,52);
+    g.generateTexture('sun',184,184); g.clear();
+
+    // chunky cloud
+    g.fillStyle(0xffffff,1);
+    g.fillCircle(30,32,18); g.fillCircle(55,22,24); g.fillCircle(80,32,17);
+    g.fillCircle(64,36,20); g.fillCircle(42,36,19);
+    g.generateTexture('cloud',110,54); g.clear();
+
+    // Three hill bands. Circle centres repeat every 96px and the row includes
+    // both x=0 and x=W, so each texture tiles horizontally with no seam.
+    const hill = (key,h,r,color)=>{
+      g.fillStyle(color,1);
+      for(let x=0;x<=W;x+=96) g.fillCircle(x,r,r);
+      g.fillRect(0,r,W,h-r);
+      g.generateTexture(key,W,h); g.clear();
+    };
+    hill('hillFar',242,46,0xbdf0d2);
+    hill('hillMid',172,40,0x74dcae);
+    hill('hillNear',102,34,0x3ec392);
+
+    // Flower verge — tiles at full run speed just above the ground line, which
+    // is what actually sells the sense of speed. Deliberately kept LOW: taller
+    // flowers reach the same height as the storks and clutter the exact band
+    // the player is reading for hazards.
+    const heads=[0xff5d8f,0xffd23c,0xa06bff,0xff8a3d,0x4dd2ff];
+    for(let i=0;i<12;i++){
+      const x=20+i*40, hgt=8+(i%4)*3;
+      g.fillStyle(0x2f9e6a,1); g.fillRect(x-1.5,38-hgt,3,hgt);
+      g.fillStyle(heads[i%heads.length],1); g.fillCircle(x,38-hgt,5);
+      g.fillStyle(0xfff3b0,1); g.fillCircle(x,38-hgt,1.9);
+    }
+    g.fillStyle(0x2e9c6c,1); g.fillRect(0,37,W,7);
+    g.generateTexture('verge',W,44); g.clear();
+
+    // ground: meadow turf with a bright top edge
+    g.fillStyle(0x2e9c6c,1); g.fillRect(0,0,W,90);
+    g.fillStyle(0x6ff0b4,1); g.fillRect(0,0,W,6);
+    g.generateTexture('ground',W,90); g.clear();
+
+    g.destroy();
+    this.scene.start('Menu');
+  }
+}
+
+// ---------- Simple synthesized beep (no audio files) ----------
+function beep(freq, dur=0.08, type='sine', vol=0.15){
+  try{
+    const ctx = beep._ctx || (beep._ctx = new (window.AudioContext||window.webkitAudioContext)());
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = type; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(vol, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + dur);
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.start(); osc.stop(ctx.currentTime + dur);
+  }catch(e){}
+}
+
+// ---------- Menu Scene ----------
+class MenuScene extends Phaser.Scene{
+  constructor(){ super('Menu'); }
+  create(){
+    let s = loadSave(); s = regenEnergy(s); s = checkLoginStreak(s); save(s);
+    this.cameras.main.setBackgroundColor('#0a0612');
+
+    this.add.text(W/2,80,'PULSE STREAK',{fontSize:'38px',fontStyle:'bold',color:'#ffffff'}).setOrigin(0.5);
+    this.add.text(W/2,118,'one tap. one streak. one more run.',{fontSize:'13px',color:'#9a8fc2'}).setOrigin(0.5);
+
+    this.add.text(36,160,`Shards: ${s.shards}`,{fontSize:'17px',color:'#37e6ff'});
+    this.add.text(36,184,`Best Score: ${s.best}`,{fontSize:'17px',color:'#ffffff'});
+
+    // Energy display
+    this.energyText = this.add.text(W-36,160,'',{fontSize:'17px',color:'#ff4d9d'}).setOrigin(1,0);
+    this.updateEnergyText(s);
+
+    // Daily login streak strip (habit-anchoring reward loop)
+    const reward = loginStreakReward(s.loginStreak.count);
+    this.add.text(36,214, `Login Streak: Day ${s.loginStreak.count}`,{fontSize:'14px',color:'#ffdd3c'});
+    if(!s.loginStreak.claimedToday){
+      const claim = this.add.text(W-36,214,`[CLAIM +${reward}]`,{fontSize:'14px',color:'#6bff8f'}).setOrigin(1,0).setInteractive();
+      claim.on('pointerdown',()=>{
+        let s2 = loadSave(); s2.shards += reward; s2.loginStreak.claimedToday = true; save(s2);
+        this.scene.restart();
+      });
+    } else {
+      this.add.text(W-36,214,'claimed today',{fontSize:'12px',color:'#5a5270'}).setOrigin(1,0);
+    }
+    this.drawStreakPips(s.loginStreak.count);
+
+    // Play button
+    const playBtn = this.add.rectangle(W/2,330,260,64,0x37e6ff).setInteractive();
+    this.add.text(W/2,330,'PLAY',{fontSize:'26px',fontStyle:'bold',color:'#0a0612'}).setOrigin(0.5);
+    playBtn.on('pointerdown', ()=>{
+      let s3 = loadSave(); s3 = regenEnergy(s3);
+      if(s3.energy.count <= 0){
+        save(s3);
+        this.showEnergyWait(s3);
+        return;
+      }
+      s3.energy.count -= 1; save(s3);
+      this.scene.start('Game');
+    });
+
+    // Shop button
+    const shopBtn = this.add.rectangle(W/2,410,260,50,0x241a3d).setInteractive();
+    this.add.text(W/2,410,'SHOP / UPGRADES',{fontSize:'16px',color:'#ffffff'}).setOrigin(0.5);
+    shopBtn.on('pointerdown', ()=> this.openShop());
+
+    // Trail skins row
+    this.add.text(36,462,'Trail Colors (tap to equip):',{fontSize:'13px',color:'#9a8fc2'});
+    this.drawTrails(s);
+
+    // Leaderboard
+    this.add.text(36,552,'Local Leaderboard (Top 10):',{fontSize:'14px',color:'#9a8fc2'});
+    const top = [...s.leaderboard].sort((a,b)=>b.score-a.score).slice(0,10);
+    top.forEach((row,i)=>{
+      this.add.text(36,577+i*20,`${i+1}. ${row.name}  —  ${row.score}`,{fontSize:'13px',color:'#e8e4f5'});
+    });
+    if(top.length===0){
+      this.add.text(36,577,'No runs yet — be the first.',{fontSize:'13px',color:'#5a5270'});
+    }
+
+    this.add.text(W/2,H-16,`v${APP_VERSION} · Phaser 3 (MIT) · offline, no ads, no tracking`,{fontSize:'10px',color:'#453f5c'}).setOrigin(0.5);
+  }
+
+  drawStreakPips(count){
+    const cycle = ((count-1) % 7) + 1;
+    for(let i=0;i<7;i++){
+      const on = i < cycle;
+      this.add.circle(36+i*22, 236, 6, on?0xffdd3c:0x2a2240);
+    }
+  }
+
+  updateEnergyText(s){
+    let hearts = '';
+    for(let i=0;i<5;i++) hearts += i < s.energy.count ? '♥' : '♡';
+    this.energyText.setText(hearts);
+  }
+
+  showToast(msg){
+    const t = this.add.text(W/2,H/2,msg,{fontSize:'16px',color:'#fff',backgroundColor:'#000',padding:{x:10,y:6}}).setOrigin(0.5).setDepth(50);
+    this.tweens.add({targets:t,alpha:0,delay:1200,duration:400,onComplete:()=>t.destroy()});
+  }
+
+  // Honest replacement for the old "[Simulated Rewarded Ad — +1 Energy]"
+  // countdown: it granted energy for watching nothing. Now the player is simply
+  // told when the next heart lands. No fake ad, nothing to mislead a parent.
+  showEnergyWait(s){
+    const eta = energyEtaSeconds(s);
+    this.showToast(eta > 0
+      ? `Out of energy — next heart in ${eta}s`
+      : 'Out of energy — a heart is ready, tap PLAY again');
+  }
+
+  drawTrails(s){
+    const startX = 36, y = 492, gap = 40;
+    TRAIL_POOL.forEach((hex,i)=>{
+      const owned = s.trails.includes(hex);
+      const c = this.add.circle(startX+i*gap, y, 15, owned?parseInt(hex,16):0x201936).setStrokeStyle(2, s.equipped===hex?0xffffff:0x000000);
+      if(owned){
+        c.setInteractive();
+        c.on('pointerdown',()=>{ let s2=loadSave(); s2.equipped=hex; save(s2); this.scene.restart(); });
+      } else {
+        this.add.text(startX+i*gap, y, '🔒',{fontSize:'12px'}).setOrigin(0.5);
+      }
+    });
+  }
+
+  openShop(){
+    const panel = this.add.rectangle(W/2,H/2,W-40,500,0x150f26).setStrokeStyle(2,0x2a2246).setDepth(70);
+    const closeBtn = this.add.text(W/2+200,H/2-230,'✕',{fontSize:'22px',color:'#fff'}).setOrigin(0.5).setDepth(71).setInteractive();
+    const items = [
+      {key:'jump', name:'Jump Boost (higher clear)', base:25},
+      {key:'magnet', name:'Shard Magnet (+radius)', base:22},
+      {key:'guard', name:'Guard Pulse (block 1 hit)', base:35}
+    ];
+    const nodes = [];
+    const render = ()=>{
+      nodes.forEach(n=>n.destroy()); nodes.length=0;
+      const s2 = loadSave();
+      nodes.push(this.add.text(W/2,H/2-190,'SHOP',{fontSize:'22px',fontStyle:'bold',color:'#fff'}).setOrigin(0.5).setDepth(71));
+      nodes.push(this.add.text(W/2,H/2-160,`Shards: ${s2.shards}`,{fontSize:'16px',color:'#37e6ff'}).setOrigin(0.5).setDepth(71));
+      items.forEach((it,i)=>{
+        const lvl = s2.upgrades[it.key];
+        const cost = it.base * (lvl+1);
+        const y = H/2 - 110 + i*80;
+        nodes.push(this.add.text(W/2-160,y,`${it.name}  Lv.${lvl}`,{fontSize:'13px',color:'#fff',wordWrap:{width:210}}).setDepth(71));
+        const buyBtn = this.add.rectangle(W/2+150,y+8,80,34,0x37e6ff).setDepth(71).setInteractive();
+        const buyTxt = this.add.text(W/2+150,y+8,`Buy ${cost}`,{fontSize:'12px',color:'#0a0612'}).setOrigin(0.5).setDepth(72);
+        nodes.push(buyBtn, buyTxt);
+        buyBtn.on('pointerdown',()=>{
+          const s3 = loadSave();
+          if(s3.shards >= cost && s3.upgrades[it.key] < 5){
+            s3.shards -= cost; s3.upgrades[it.key] += 1; save(s3); render();
+          } else { this.showToast(s3.upgrades[it.key]>=5?'Max level':'Not enough shards'); }
+        });
+      });
+    };
+    render();
+    closeBtn.on('pointerdown',()=>{
+      panel.destroy(); closeBtn.destroy(); nodes.forEach(n=>n.destroy());
+      this.scene.restart();
+    });
+  }
+}
+
+// ---------- Game Scene ----------
+class GameScene extends Phaser.Scene{
+  constructor(){ super('Game'); }
+
+  create(){
+    this.saveData = loadSave();
+    this.cameras.main.setBackgroundColor('#a9ecff');
+
+    // ---- Parallax meadow. Depths are all negative so the gameplay layer
+    // (player, storks, shards, HUD, panels) always sits on top, and so the
+    // depth>=80 teardown in reviveContinue() can never touch scenery.
+    this.add.image(0,0,'sky').setOrigin(0,0).setDepth(-50);
+    this.add.image(W-84,84,'sun').setDepth(-49);
+    this.clouds = [
+      this.add.image(96,96,'cloud').setDepth(-48),
+      this.add.image(310,58,'cloud').setScale(0.8).setAlpha(0.85).setDepth(-48),
+      this.add.image(210,196,'cloud').setScale(0.6).setAlpha(0.55).setDepth(-48)
+    ];
+    this.hillFar  = this.add.tileSprite(0,468,W,242,'hillFar').setOrigin(0,0).setDepth(-46);
+    this.hillMid  = this.add.tileSprite(0,538,W,172,'hillMid').setOrigin(0,0).setDepth(-45);
+    this.hillNear = this.add.tileSprite(0,608,W,102,'hillNear').setOrigin(0,0).setDepth(-44);
+
+    this.started = false;
+    this.gameOver = false;
+    this.score = 0;
+    this.streak = 0;
+    this.speedMult = 1;
+    this.shardsThisRun = 0;
+    this.hasGuard = this.saveData.upgrades.guard > 0;
+    this.magnetLevel = this.saveData.upgrades.magnet;
+    this.jumpLevel = this.saveData.upgrades.jump;
+    this.revivedOnce = false;
+    this.baseSpeed = -260 - this.speedMultFromScore();
+    this.jumpVelocity = -560 - this.jumpLevel*18;
+
+    // Ground: static body, always present — the runner stands on it from
+    // frame 1 (no surprise fall) so the 3-second rule holds even before tap.
+    this.ground = this.physics.add.staticGroup();
+    this.ground.create(W/2, GROUND_Y+45, 'ground').setDepth(-6);
+    // The verge scrolls at the full run speed — the layer that actually sells
+    // how fast you're going.
+    this.verge = this.add.tileSprite(0, GROUND_Y-36, W, 44, 'verge')
+      .setOrigin(0,0).setDepth(-5);
+
+    // Player — fixed x, world scrolls toward it. Gravity is on immediately
+    // (standing on ground requires no tap), only obstacle spawning waits
+    // for the first tap.
+    // The critter keeps its own colours — tinting the whole sprite with the
+    // equipped cosmetic would recolour its eyes and blush too. The equipped
+    // colour drives the particle trail instead, which is what "Trail Colors"
+    // says on the tin.
+    this.player = this.physics.add.sprite(W*0.24, GROUND_Y-20, 'player');
+    this.player.setCollideWorldBounds(true);
+    this.player.body.setGravityY(1700);
+    // Contact shadow — anchors the critter to the turf and doubles as a height
+    // cue while airborne (it shrinks and fades as you rise).
+    this.playerShadow = this.add.ellipse(this.player.x, GROUND_Y-3, 30, 9, 0x14684a, 0.3)
+      .setDepth(-4);
+
+    this.obstacles = this.physics.add.group();
+    this.shards = this.physics.add.group();
+
+    // Phaser 3.60+ requires (x, y, texture, config) — a bare texture-key
+    // call would silently misinterpret the key as x. See phaser_pitfalls.md.
+    this.particles = this.add.particles(0, 0, 'particle', {
+      speed: { min: 60, max: 200 },
+      scale: { start: 1, end: 0 },
+      alpha: { start: 1, end: 0 },
+      lifespan: 400,
+      quantity: 1,
+      tint: parseInt(this.saveData.equipped,16),
+      emitting: false
+    });
+
+    this.physics.add.collider(this.player, this.ground);
+    this.physics.add.overlap(this.player, this.obstacles, ()=>this.onHit());
+    this.physics.add.overlap(this.player, this.shards, (p,c)=>this.onShard(c));
+
+    // 3-second-rule intro overlay — goal, control, and failure condition
+    // are all readable at a glance before the first tap.
+    // Text is dark with a white outline now: white-on-white was unreadable the
+    // moment the background turned into a bright sky.
+    this.introText = this.add.text(W/2,H/2-60,'TAP TO JUMP',{fontSize:'28px',fontStyle:'bold',color:'#123a4a',stroke:'#ffffff',strokeThickness:5}).setOrigin(0.5);
+    this.introSub = this.add.text(W/2,H/2-20,'Hop over the storks. Grab the shards.',{fontSize:'14px',fontStyle:'bold',color:'#1c5c4a',stroke:'#ffffff',strokeThickness:3}).setOrigin(0.5);
+    this.introBird = this.add.image(W/2, H/2+34, 'stork').setScale(0.9);
+
+    this.scoreText = this.add.text(20,20,'0',{fontSize:'28px',fontStyle:'bold',color:'#123a4a',stroke:'#ffffff',strokeThickness:5});
+    this.streakText = this.add.text(20,55,'',{fontSize:'14px',fontStyle:'bold',color:'#d2571e',stroke:'#ffffff',strokeThickness:3});
+
+    this.input.on('pointerdown', ()=>this.jump());
+    this.input.keyboard.on('keydown-SPACE', ()=>this.jump());
+
+    this.obstacleTimer = this.time.addEvent({ delay:1300, loop:true, callback:()=>this.spawnObstacle(), paused:true });
+  }
+
+  speedMultFromScore(){ return 0; }
+
+  jump(){
+    if(this.gameOver) return;
+    if(!this.started){
+      this.started = true;
+      // Tear down EVERY intro element, the demo bird included. It used to be
+      // left behind and hung in mid-air for the rest of the run, reading as a
+      // real obstacle the player could neither hit nor clear.
+      this.introText.destroy(); this.introSub.destroy(); this.introBird.destroy();
+      this.obstacleTimer.paused = false;
+    }
+    // Zero-friction single jump: only while grounded, so tap timing stays
+    // meaningful (no infinite hover) but never requires a menu/reset to retry.
+    if(this.player.body.blocked.down || this.player.body.touching.down){
+      this.player.setVelocityY(this.jumpVelocity);
+      beep(320+this.streak*12,0.07,'triangle',0.12);
+    }
+  }
+
+  spawnObstacle(){
+    if(this.gameOver) return;
+    const speed = this.baseSpeed * this.speedMult;
+
+    // Obstacle keeps the default center origin so its Arcade physics body
+    // (sized to the texture at creation time) stays aligned with the visible
+    // sprite — the y is computed so the spike's bottom edge sits on the
+    // ground line, rather than reassigning origin after creation.
+    const spikeH = 50;
+    const spike = this.obstacles.create(W+40, GROUND_Y+45 - 45 - spikeH/2, 'stork');
+    spike.body.allowGravity = false;
+    spike.setVelocityX(speed);
+    spike.setImmovable(true);
+    spike.scored = false;
+
+    if(Math.random() < 0.5){
+      const shard = this.shards.create(W+40, GROUND_Y-70-Phaser.Math.Between(0,60), 'shard');
+      shard.body.allowGravity = false;
+      shard.setVelocityX(speed);
+      if(this.magnetLevel>0) shard.body.setCircle(9 + this.magnetLevel*7);
+    }
+
+    this.time.delayedCall(6000, ()=>{ if(spike.active) spike.destroy(); });
+  }
+
+  onShard(shardSprite){
+    shardSprite.destroy();
+    this.shardsThisRun += 3;
+    this.particles.emitParticleAt(this.player.x, this.player.y, 6);
+    beep(700,0.05,'sine',0.1);
+  }
+
+  onHit(){
+    if(this.gameOver) return;
+    if(this.hasGuard){
+      this.hasGuard = false;
+      this.cameras.main.flash(150, 255,255,255);
+      this.particles.emitParticleAt(this.player.x,this.player.y,20);
+      beep(160,0.15,'sawtooth',0.15);
+      // brief invulnerable push-through: clear the obstacle just hit.
+      // Iterate over a *copy*: destroying a child removes it from the group's
+      // entries array, and Group.children.iterate() caches the length up front
+      // and indexes the live array — so destroying in place skips members.
+      this.obstacles.getChildren().slice().forEach(o=>{ if(o && o.active && Math.abs(o.x-this.player.x)<70) o.destroy(); });
+      return;
+    }
+    this.endRun();
+  }
+
+  endRun(){
+    this.gameOver = true;
+    this.physics.pause();
+    this.cameras.main.shake(200, 0.012);
+    this.obstacleTimer.paused = true;
+
+    let s = loadSave();
+    s.shards += this.shardsThisRun;
+    if(this.score > s.best) s.best = this.score;
+
+    // Variable reward: cosmetic gacha spin, 20% chance of a new trail color.
+    // Non-gameplay, collection-impulse reward per blueprint Phase 4.
+    let newTrail = null;
+    const locked = TRAIL_POOL.filter(h=>!s.trails.includes(h));
+    if(locked.length>0 && Math.random() < 0.20){
+      newTrail = locked[Phaser.Math.Between(0,locked.length-1)];
+      s.trails.push(newTrail);
+    }
+    save(s);
+    this.finalSave = s;
+    this.newTrail = newTrail;
+
+    this.showGameOver();
+  }
+
+  showGameOver(){
+    this.add.rectangle(W/2,H/2,W-60,420,0x0e0a1a,0.96).setStrokeStyle(2,0x2a2246).setDepth(80);
+    this.add.text(W/2,H/2-170,'RUN OVER',{fontSize:'28px',fontStyle:'bold',color:'#ff4d9d'}).setOrigin(0.5).setDepth(81);
+    this.add.text(W/2,H/2-130,`Score: ${this.score}`,{fontSize:'20px',color:'#fff'}).setOrigin(0.5).setDepth(81);
+    this.add.text(W/2,H/2-100,`Best: ${this.finalSave.best}`,{fontSize:'16px',color:'#9a8fc2'}).setOrigin(0.5).setDepth(81);
+    this.add.text(W/2,H/2-75,`Shards earned: +${this.shardsThisRun}`,{fontSize:'16px',color:'#37e6ff'}).setOrigin(0.5).setDepth(81);
+    if(this.newTrail){
+      this.add.text(W/2,H/2-45,'New trail color unlocked!',{fontSize:'14px',color:'#6bff8f'}).setOrigin(0.5).setDepth(81);
+      this.add.circle(W/2,H/2-15,14,parseInt(this.newTrail,16)).setDepth(81);
+    }
+
+    let y = H/2+40;
+    if(!this.revivedOnce){
+      // One free continue per run. This used to be "REVIVE (watch ad)" behind a
+      // three-second fake ad — the reward was always granted, so the ad was
+      // theatre. Same generosity, stated plainly.
+      const reviveBtn = this.add.rectangle(W/2,y,260,50,0xffdd3c).setDepth(81).setInteractive();
+      this.add.text(W/2,y,'CONTINUE (free)',{fontSize:'16px',fontStyle:'bold',color:'#0a0612'}).setOrigin(0.5).setDepth(82);
+      reviveBtn.on('pointerdown',()=>this.reviveContinue());
+      y += 65;
+    }
+    const retryBtn = this.add.rectangle(W/2,y,260,50,0x37e6ff).setDepth(81).setInteractive();
+    this.add.text(W/2,y,'RETRY (instant)',{fontSize:'16px',fontStyle:'bold',color:'#0a0612'}).setOrigin(0.5).setDepth(82);
+    retryBtn.on('pointerdown',()=>this.scene.restart());
+    y += 65;
+    const menuBtn = this.add.rectangle(W/2,y,260,44,0x241a3d).setDepth(81).setInteractive();
+    this.add.text(W/2,y,'MENU',{fontSize:'14px',color:'#fff'}).setOrigin(0.5).setDepth(82);
+    menuBtn.on('pointerdown',()=>this.goToMenuMaybeLeaderboard());
+  }
+
+  reviveContinue(){
+    this.revivedOnce = true;
+    this.gameOver = false;
+    this.physics.resume();
+    this.obstacleTimer.paused = false;
+    // Clear the board so the player gets a clean restart after the "ad".
+    // Copy first — see the note in onHit(): destroying during iterate() would
+    // leave half the spikes on screen, right on top of the revived player.
+    this.obstacles.getChildren().slice().forEach(o=>{ if(o && o.active) o.destroy(); });
+    this.shards.getChildren().slice().forEach(c=>{ if(c && c.active) c.destroy(); });
+    this.player.setPosition(W*0.24, GROUND_Y-20);
+    this.player.setVelocity(0,0);
+    this.hasGuard = true; // one grace hit after revive
+    // remove overlay texts/rects added at depth 80-82
+    this.children.list.slice().forEach(obj=>{ if(obj.depth>=80) obj.destroy(); });
+  }
+
+  goToMenuMaybeLeaderboard(){
+    const s = loadSave();
+    const top = [...s.leaderboard].sort((a,b)=>b.score-a.score);
+    const qualifies = top.length < 10 || this.score > (top[9] ? top[9].score : 0);
+    if(qualifies && this.score > 0){
+      this.promptInitials(s);
+    } else {
+      this.scene.start('Menu');
+    }
+  }
+
+  promptInitials(s){
+    this.add.rectangle(W/2,H/2,W-80,220,0x0e0a1a,0.98).setStrokeStyle(2,0xffdd3c).setDepth(95);
+    this.add.text(W/2,H/2-70,'New Leaderboard Entry!',{fontSize:'18px',color:'#ffdd3c'}).setOrigin(0.5).setDepth(96);
+    this.add.text(W/2,H/2-40,`Score: ${this.score}`,{fontSize:'16px',color:'#fff'}).setOrigin(0.5).setDepth(96);
+    this.add.dom(W/2, H/2+5).createFromHTML(
+      `<input id="initials" maxlength="3" style="width:100px;font-size:20px;text-align:center;text-transform:uppercase" value="YOU">`
+    ).setDepth(96);
+    const okBtn = this.add.rectangle(W/2,H/2+90,140,40,0x6bff8f).setDepth(96).setInteractive();
+    this.add.text(W/2,H/2+90,'SAVE',{fontSize:'14px',color:'#0a0612'}).setOrigin(0.5).setDepth(97);
+    okBtn.on('pointerdown',()=>{
+      const input = document.getElementById('initials');
+      const val = (input ? input.value : 'YOU').toUpperCase().slice(0,3) || 'YOU';
+      const s2 = loadSave();
+      s2.leaderboard.push({name:val, score:this.score});
+      s2.leaderboard = s2.leaderboard.sort((a,b)=>b.score-a.score).slice(0,10);
+      save(s2);
+      this.scene.start('Menu');
+    });
+  }
+
+  update(time, delta){
+    // Shadow tracking runs before the early return so it stays glued to the
+    // critter's feet during the intro and after a crash, not just mid-run.
+    if(this.playerShadow){
+      const air = Phaser.Math.Clamp((GROUND_Y-17-this.player.y)/130, 0, 1);
+      this.playerShadow.x = this.player.x;
+      this.playerShadow.setScale(1-air*0.4).setAlpha(0.30-air*0.2);
+    }
+    if(this.gameOver || !this.started) return;
+
+    // Parallax: every layer is a fraction of the run speed, so the whole
+    // meadow speeds up with the streak multiplier for free.
+    const px = -this.baseSpeed * this.speedMult * ((delta||16)/1000);
+    for(const c of this.clouds){ c.x -= px*0.06; if(c.x < -80) c.x += W+160; }
+    this.hillFar.tilePositionX  += px*0.12;
+    this.hillMid.tilePositionX  += px*0.26;
+    this.hillNear.tilePositionX += px*0.46;
+    this.verge.tilePositionX    += px;
+
+    this.obstacles.children.iterate(o=>{
+      if(o && o.active && !o.scored && o.x < this.player.x){
+        o.scored = true;
+        this.score += 1;
+        this.streak += 1;
+        this.scoreText.setText(String(this.score));
+        this.particles.emitParticleAt(this.player.x+20,this.player.y,4);
+        if(this.streak>0 && this.streak%5===0){
+          this.speedMult = Math.min(1.6, this.speedMult + 0.08);
+          this.cameras.main.flash(80, 60,200,255);
+          this.streakText.setText(`STREAK x${this.streak}!  speed ${this.speedMult.toFixed(2)}x`);
+          beep(520+this.streak*8,0.15,'square',0.12);
+        } else {
+          this.streakText.setText(this.streak>1?`streak ${this.streak}`:'');
+        }
+      }
+    });
+    if(this.player.y > H+40) this.onHit(); // safety net if ever knocked off-screen
+  }
+}
+
+// ---------- Diagnostics ----------
+// If anything throws before/while Phaser is booting, show it as visible text
+// instead of leaving a silent blank/background-only screen — a blank canvas
+// gives no signal about what went wrong.
+function showFatalError(msg){
+  const div = document.createElement('div');
+  div.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#ff4d9d;color:#0a0612;'
+    + 'font:13px/1.4 monospace;padding:12px;z-index:99999;white-space:pre-wrap;max-height:80%;overflow:auto;';
+  div.textContent = msg;
+  document.body.appendChild(div);
+}
+window.addEventListener('error', (e)=>{
+  showFatalError('Script error: ' + (e.message || e) + (e.filename ? ('\nat ' + e.filename + ':' + e.lineno) : ''));
+});
+
+const config = {
+  type: Phaser.AUTO,
+  width: W, height: H,
+  parent: 'game-wrap',
+  backgroundColor:'#0a0612',
+  physics: { default:'arcade', arcade:{ gravity:{y:0}, debug:false } },
+  dom: { createContainer: true },
+  scene: [BootScene, MenuScene, GameScene]
+};
+window.addEventListener('load', ()=>{
+  if (typeof Phaser === 'undefined') {
+    showFatalError('phaser.min.js did not load. Make sure phaser.min.js is sitting in the same folder as index.html.');
+    return;
+  }
+  try{
+    new Phaser.Game(config);
+  }catch(e){
+    showFatalError('Game failed to start:\n' + (e && e.stack ? e.stack : e));
+  }
+});
+</script>
+</body>
+</html>

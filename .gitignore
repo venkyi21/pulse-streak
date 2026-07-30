@@ -1,0 +1,53 @@
+# --- Signing material: NEVER commit these -----------------------------------
+# Losing the keystore means you can never update the published app; leaking it
+# means someone else can sign builds as you.
+*.jks
+*.keystore
+keystore.properties
+key.properties
+*.p12
+*.pepk
+google-play-service-account*.json
+
+# --- Node --------------------------------------------------------------------
+node_modules/
+npm-debug.log*
+.npm/
+
+# --- Capacitor build inputs/outputs -----------------------------------------
+# www/ is generated from index.html + phaser.min.js by `npm run build:www`
+www/
+.capacitor/
+
+# --- Android ----------------------------------------------------------------
+android/.gradle/
+android/build/
+android/app/build/
+android/app/release/
+android/app/debug/
+android/local.properties
+android/.idea/
+android/captures/
+android/app/src/main/assets/public/
+*.apk
+*.aab
+*.aab.idsig
+*.apk.idsig
+
+# --- Editors / OS -----------------------------------------------------------
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+
+# --- Local scratch ----------------------------------------------------------
+*.log
+tmp/
+
+# --- Generated / local reference --------------------------------------------
+# Derived by `npm run version:sync` during a build.
+version.json
+# Local copy of Phaser's own source, kept only as a reading aid while building.
+# Not part of the app: phaser.min.js is what ships.
+.phaser-src-ref/

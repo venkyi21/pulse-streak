@@ -1,0 +1,16 @@
+# Normalise line endings so a Windows checkout and the Linux CI runner agree —
+# otherwise CI's "are the committed assets current?" checks see phantom diffs.
+* text=auto eol=lf
+
+# Binary: never touch these
+*.png binary
+*.jpg binary
+*.jks binary
+*.keystore binary
+*.aab binary
+*.apk binary
+phaser.min.js -text
+
+# Gradle wrapper must stay LF or it will not execute on Linux
+gradlew text eol=lf
+*.bat text eol=crlf

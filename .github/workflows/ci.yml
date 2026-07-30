@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Tests & build sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # The test suite itself needs zero dependencies (node:test only), so this
+      # stays green even before Capacitor is installed.
+      - name: Install dependencies
+        run: |
+          if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
+
+      - name: Unit + integration tests
+        run: npm test
+
+      - name: index.html parses, evaluates and boots
+        run: npm run check
+
+      - name: Version consistency (package.json / index.html / gradle)
+        run: npm run version:check
+
+      - name: Web payload builds and is fully offline
+        run: npm run build:www
+
+      - name: Store assets regenerate from the shipped art
+        run: npm run assets
+
+      # Generated assets are committed so the listing is reviewable in git. If
+      # regenerating changes them, the art moved and the committed copies are
+      # stale — fail rather than ship a listing that misrepresents the game.
+      - name: Committed store assets are up to date
+        run: |
+          if [ -n "$(git status --porcelain store-assets)" ]; then
+            echo "::error::store-assets/ is out of date — run 'npm run assets' and commit the result"
+            git --no-pager diff --stat store-assets
+            exit 1
+          fi
