@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Pulse Streak</string>
+    <string name="title_activity_main">Pulse Streak</string>
+    <string name="package_name">com.pulsestreak.game</string>
+    <string name="custom_url_scheme">com.pulsestreak.game</string>
+</resources>

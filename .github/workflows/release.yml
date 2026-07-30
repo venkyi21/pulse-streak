@@ -32,6 +32,13 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      # Don't rely on whatever SDK platforms happen to be baked into the runner
+      # image — pin them and accept the licences explicitly, so a runner image
+      # update can't break releases.
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+
       - name: Install dependencies
         run: |
           if [ -f package-lock.json ]; then npm ci; else npm install --no-audit --no-fund; fi
