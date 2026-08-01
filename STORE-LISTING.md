@@ -83,7 +83,7 @@ All in [`store-assets/`](store-assets/), generated from the game's own artwork:
 |---|---|
 | `icon-512.png` | App icon (512×512) |
 | `feature-graphic-1024x500.png` | Feature graphic / banner |
-| `screenshot-1-play.png` | Phone screenshot (1080×1800) |
+| `screenshot-1-play.png` | Phone screenshot (1080×1920) |
 | `screenshot-2-jump.png` | Phone screenshot |
 | `screenshot-3-streak.png` | Phone screenshot |
 

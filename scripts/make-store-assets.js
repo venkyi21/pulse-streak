@@ -107,35 +107,60 @@ function featureGraphic() {
 write(featureGraphic(), 'feature-graphic-1024x500.png');
 
 // -------------------------------------------------------------- gameplay ---
-// A faithful frame of the running game, at the real 480x800 layout, then scaled
-// to a 1080x1920 phone screenshot.
+// Phone screenshots at exactly 1080x1920 — the dimension stores ask for.
+//
+// The game canvas is 480x800 (3:5), which is NOT 9:16, so scaling it up gives
+// 1080x1800 and leaves 120px unaccounted for. Rather than letterbox with bars,
+// the scene is anchored to the bottom and the extra height becomes more sky —
+// so the frame is a genuine, correctly-proportioned view of the game rather
+// than a padded one.
+const SHOT_W = 1080, SHOT_H = 1920;
+const S = SHOT_W / G.W;                  // 2.25
+const DY = SHOT_H - G.H * S;             // 120px of extra sky on top
+
 function gameplayFrame({ playerY = G.GROUND_Y - 17, storks = [300, 436], shard = [372, 604] } = {}) {
-  const c = new Canvas(G.W, G.H, 0xa9ecff);
-  tl(c, 'sky', 0, 0);
-  at(c, 'sun', G.W - 84, 84);
-  at(c, 'cloud', 96, 96);
-  at(c, 'cloud', 310, 58, 0.8, 0.85);
-  at(c, 'cloud', 210, 196, 0.6, 0.55);
-  tl(c, 'hillFar', 0, 468);
-  tl(c, 'hillMid', 0, 538);
-  tl(c, 'hillNear', 0, 608);
-  tl(c, 'ground', 0, G.GROUND_Y);
-  tl(c, 'verge', 0, G.GROUND_Y - 36);
+  const c = new Canvas(SHOT_W, SHOT_H, 0xa9ecff);
+  const groundLine = G.GROUND_Y * S + DY;
+
+  // Sky painted across the full height rather than blitting the 480x710 sky
+  // texture, which would leave the top 120px empty.
+  c.gradientV(0, groundLine, 0xa9ecff, 0xfff2d2, 140);
+
+  /** Centre-origin placement in game coordinates. */
+  const put = (key, cx, cy, s = 1, a = 1) => {
+    const t = T(key);
+    c.replay(t.ops, cx * S - (t.width * s * S) / 2, cy * S + DY - (t.height * s * S) / 2, s * S, a);
+  };
+  /** Top-left placement in game coordinates. */
+  const lay = (key, x, y, s = 1, a = 1) => c.replay(T(key).ops, x * S, y * S + DY, s * S, a);
+
+  put('sun', G.W - 84, 84);
+  put('cloud', 96, 96);
+  put('cloud', 310, 58, 0.8, 0.85);
+  put('cloud', 210, 196, 0.6, 0.55);
+  lay('hillFar', 0, 468);
+  lay('hillMid', 0, 538);
+  lay('hillNear', 0, 608);
+  lay('ground', 0, G.GROUND_Y);
+  lay('verge', 0, G.GROUND_Y - 36);
+
   // contact shadow, tightening the higher the critter is
   const air = Math.min(1, Math.max(0, (G.GROUND_Y - 17 - playerY) / 130));
   c.setFill(0x14684a, 0.3 - air * 0.2);
-  c.ellipse(G.W * 0.24, G.GROUND_Y - 3, 30 * (1 - air * 0.4), 9 * (1 - air * 0.4));
-  for (const x of storks) at(c, 'stork', x, G.GROUND_Y - 25);
-  if (shard) at(c, 'shard', shard[0], shard[1], 1.6);
-  at(c, 'player', G.W * 0.24, playerY);
+  c.ellipse(G.W * 0.24 * S, (G.GROUND_Y - 3) * S + DY,
+    30 * (1 - air * 0.4) * S, 9 * (1 - air * 0.4) * S);
+
+  for (const x of storks) put('stork', x, G.GROUND_Y - 25);
+  if (shard) put('shard', shard[0], shard[1], 1.6);
+  put('player', G.W * 0.24, playerY);
   return c;
 }
 
-write(gameplayFrame(), 'screenshot-1-play.png', 2.25);
+write(gameplayFrame(), 'screenshot-1-play.png');
 write(gameplayFrame({ playerY: G.GROUND_Y - 95, storks: [200, 400], shard: [300, 560] }),
-  'screenshot-2-jump.png', 2.25);
+  'screenshot-2-jump.png');
 write(gameplayFrame({ playerY: G.GROUND_Y - 60, storks: [150, 280, 410], shard: null }),
-  'screenshot-3-streak.png', 2.25);
+  'screenshot-3-streak.png');
 
 console.log(`Store assets written to store-assets/ (from the game's own textures):`);
 for (const w of written) console.log(`  ${w}`);

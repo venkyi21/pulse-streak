@@ -48,7 +48,7 @@ jobs:
           const fs=require('fs');
           const want={'icon-512.png':[512,512],'icon-adaptive-fg-432.png':[432,432],
             'icon-adaptive-bg-432.png':[432,432],'feature-graphic-1024x500.png':[1024,500],
-            'screenshot-1-play.png':[1080,1800]};
+            'screenshot-1-play.png':[1080,1920]};
           let bad=[];
           for(const [f,[w,h]] of Object.entries(want)){
             const p='store-assets/'+f;
