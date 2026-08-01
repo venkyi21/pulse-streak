@@ -107,6 +107,33 @@ for (const [density, [legacy, adaptive]] of Object.entries(DENSITIES)) {
   console.log(`  mipmap-${density.padEnd(7)} ${legacy}px icons + ${adaptive}px foreground`);
 }
 
+// Re-encode through libpng if ffmpeg is available. The hand-rolled encoder in
+// lib/raster.js produces structurally valid PNGs (verified CRCs, filters and
+// inflate), but aapt2 crunches launcher icons at build time and is far pickier
+// than any viewer. Normalising here keeps the Android build off that risk.
+try {
+  const { execFileSync } = require('node:child_process');
+  execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' });
+  let n = 0;
+  for (const density of Object.keys(DENSITIES)) {
+    const dir = path.join(RES, `mipmap-${density}`);
+    if (!fs.existsSync(dir)) continue;
+    for (const name of ['ic_launcher.png', 'ic_launcher_round.png', 'ic_launcher_foreground.png']) {
+      const p = path.join(dir, name);
+      if (!fs.existsSync(p)) continue;
+      const colourType = fs.readFileSync(p)[25];           // 6 = RGBA, 2 = RGB
+      const tmp = `${p}.tmp.png`;
+      execFileSync('ffmpeg', ['-y', '-loglevel', 'error', '-i', p,
+        '-pix_fmt', colourType === 6 ? 'rgba' : 'rgb24', tmp], { stdio: 'ignore' });
+      fs.renameSync(tmp, p);
+      n++;
+    }
+  }
+  console.log(`  normalised ${n} PNGs through libpng (ffmpeg)`);
+} catch {
+  console.log('  (ffmpeg not found — skipping PNG normalisation)');
+}
+
 const bgXml = path.join(RES, 'values', 'ic_launcher_background.xml');
 if (fs.existsSync(bgXml)) {
   fs.writeFileSync(bgXml,
