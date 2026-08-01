@@ -4,8 +4,11 @@ Pulse Streak, from "works on my machine" to live on the Indus Appstore.
 [DEPLOY.md](DEPLOY.md) is the build/release reference, [SUBMISSION.md](SUBMISSION.md)
 is the store walkthrough. This file is the running status.
 
-**Current build: v1.0.1 (versionCode 10001) — built, signed, and verified on a
-real Android phone.**
+**Submitted to the Indus Appstore on 1 Aug 2026 — v1.0.3 (versionCode 10003),
+status: In Review.**
+
+Built, signed, verified on a real Android phone, and uploaded. Nothing further
+to do until the review completes.
 
 ---
 
