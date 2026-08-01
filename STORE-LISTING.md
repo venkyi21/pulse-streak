@@ -12,7 +12,7 @@ please keep it that way, since listing claims are enforceable.
 |---|---|
 | App name | **Pulse Streak** |
 | Package id | `com.pulsestreak.game` |
-| Version | 1.0.0 (versionCode 10000) |
+| Version | 1.0.2 (versionCode 10002) |
 | Category | Games → **Arcade** (Casual is an acceptable second choice) |
 | Price | Free |
 | In-app purchases | None |
@@ -69,7 +69,7 @@ and stays there.
 It's a small game, about 3 MB, and it starts instantly.
 ```
 
-## "What's new" (release notes for 1.0.0)
+## "What's new" (release notes)
 
 ```
 First release. Tap to jump, hop the storks, keep the streak going.
@@ -135,11 +135,12 @@ sharing question is **No**:
 
 ## Still to do before you submit
 
-1. **Test the build on a real phone** (Phase 4 in [NEXT-STEPS.md](NEXT-STEPS.md)).
-   Do not submit a build nobody has played on hardware.
-2. **Check the console's current `targetSdk` minimum.** We ship 35. The annual
+1. **Check the console's current `targetSdk` minimum.** We ship 35. The annual
    deadline falls on 31 August, so 36 may already be required — verify against
    the console rather than trusting this file.
-3. **Register the Indus developer account**, then upload
-   `pulse-streak-1.0.0-10000.aab` from the
-   [v1.0.0 release](https://github.com/venkyi21/pulse-streak/releases/tag/v1.0.0).
+2. **Upload `pulse-streak-1.0.2-10002.aab`** from the
+   [v1.0.2 release](https://github.com/venkyi21/pulse-streak/releases/tag/v1.0.2).
+   That is the build with the real launcher icons — earlier builds shipped the
+   stock Capacitor logo.
+
+Device testing is done: v1.0.1 was installed and played on a real Android phone.
