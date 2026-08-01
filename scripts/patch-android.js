@@ -112,7 +112,21 @@ patch(GRADLE, 'signing config', (gradle) => {
     );
 });
 
-// 3 ------------------------------------------------- no cleartext traffic ---
+// 3 --------------------------------------------- drop INTERNET permission ---
+// Capacitor's template declares android.permission.INTERNET. This app makes no
+// network requests at all, so the permission is dead weight — and on a kids'
+// title, "requests no permissions whatsoever" is a materially stronger position
+// than explaining why a declared one is unused. Local assets are served through
+// Capacitor's own scheme handler, which does not need it.
+patch(MANIFEST, 'INTERNET permission removed', (xml) => {
+  if (!/android\.permission\.INTERNET/.test(xml)) return null;
+  return xml.replace(
+    /\s*<uses-permission android:name="android\.permission\.INTERNET"\s*\/>/,
+    '\n    <!-- INTERNET intentionally NOT declared: the app is fully offline. -->'
+  );
+});
+
+// 4 ------------------------------------------------- no cleartext traffic ---
 patch(MANIFEST, 'cleartext traffic disabled', (xml) => {
   if (/android:usesCleartextTraffic="false"/.test(xml)) return null;
   if (/android:usesCleartextTraffic="true"/.test(xml)) {

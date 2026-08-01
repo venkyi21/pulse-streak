@@ -38,6 +38,5 @@
     </application>
 
     <!-- Permissions -->
-
-    <uses-permission android:name="android.permission.INTERNET" />
+    <!-- INTERNET intentionally NOT declared: the app is fully offline. -->
 </manifest>

@@ -167,13 +167,14 @@ test('tapping an owned trail equips it and persists the choice', () => {
   assert.equal(menu.__restarts, 1);
 });
 
-test('the equipped swatch is the one with the white outline', () => {
+test('the equipped swatch is the one with the highlighted outline', () => {
   const env = loadGame();
   env.seedSave({ trails: ['0x37e6ff', '0xffdd3c'], equipped: '0xffdd3c' });
   const menu = openMenu(env);
 
   const highlighted = menu.children.list.filter(
-    (o) => o.type === 'circle' && o.radius === 15 && o.strokeColor === 0xffffff
+    // Inverted for the light menu: equipped gets the dark ring, the rest white.
+    (o) => o.type === 'circle' && o.radius === 15 && o.strokeColor === 0x123a4a
   );
   assert.equal(highlighted.length, 1);
   assert.equal(highlighted[0].fillColor, parseInt('0xffdd3c', 16));

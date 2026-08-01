@@ -192,9 +192,11 @@ test('the streak strip lights one pip per day of the 7-day cycle', () => {
   env.seedSave({ loginStreak: { lastDay: '', count: 0, claimedToday: false } });
   const menu = openMenu(env);
 
+  // Menu palette: lit pips are meadow-amber, spent ones are muted sage.
+  const LIT = 0xffc61a;
   const pips = menu.children.list.filter((o) => o.type === 'circle' && o.radius === 6);
   assert.equal(pips.length, 7);
-  assert.equal(pips.filter((p) => p.fillColor === 0xffdd3c).length, 1, 'day 1 => one lit pip');
+  assert.equal(pips.filter((p) => p.fillColor === LIT).length, 1, 'day 1 => one lit pip');
 
   const env2 = loadGame();
   env2.seedSave({ loginStreak: { lastDay: 'stale', count: 4, claimedToday: false } });
@@ -206,7 +208,7 @@ test('the streak strip lights one pip per day of the 7-day cycle', () => {
   env2.g.save(s);
   menu2.create();
   const pips2 = menu2.children.list.filter((o) => o.type === 'circle' && o.radius === 6);
-  assert.equal(pips2.filter((p) => p.fillColor === 0xffdd3c).length, 5, 'day 5 => five lit pips');
+  assert.equal(pips2.filter((p) => p.fillColor === LIT).length, 5, 'day 5 => five lit pips');
 });
 
 test('the leaderboard renders the top 10 in descending order', () => {

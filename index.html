@@ -40,7 +40,7 @@
 // Kept in lockstep with package.json by `npm run version:sync`, which also
 // derives the Android versionCode. A test fails if the two ever drift, so the
 // build a player is running is always identifiable from the menu footer.
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.0.1';
 
 const W = 480, H = 800;
 const GROUND_Y = H - 90;
@@ -325,35 +325,57 @@ class MenuScene extends Phaser.Scene{
   constructor(){ super('Menu'); }
   create(){
     let s = loadSave(); s = regenEnergy(s); s = checkLoginStreak(s); save(s);
-    this.cameras.main.setBackgroundColor('#0a0612');
+    this.cameras.main.setBackgroundColor('#a9ecff');
 
-    this.add.text(W/2,80,'PULSE STREAK',{fontSize:'38px',fontStyle:'bold',color:'#ffffff'}).setOrigin(0.5);
-    this.add.text(W/2,118,'one tap. one streak. one more run.',{fontSize:'13px',color:'#9a8fc2'}).setOrigin(0.5);
+    // Same meadow the game runs in, so the menu no longer looks like a
+    // different app. Static rather than parallax — nothing is moving yet.
+    this.add.image(0,0,'sky').setOrigin(0,0).setDepth(-50);
+    this.add.image(W-84,84,'sun').setDepth(-49);
+    this.add.image(96,120,'cloud').setDepth(-48);
+    this.add.image(330,66,'cloud').setScale(0.75).setAlpha(0.8).setDepth(-48);
+    this.add.image(0,468,'hillFar').setOrigin(0,0).setDepth(-46);
+    this.add.image(0,538,'hillMid').setOrigin(0,0).setDepth(-45);
+    this.add.image(0,608,'hillNear').setOrigin(0,0).setDepth(-44);
+    this.add.image(0,GROUND_Y,'ground').setOrigin(0,0).setDepth(-43);
+    this.add.image(0,GROUND_Y-36,'verge').setOrigin(0,0).setDepth(-42);
+    // Two translucent cards rather than one big one, so the meadow still shows
+    // between them. They sit behind exactly the blocks that would otherwise put
+    // dark text straight onto mid-green hills, which is unreadable.
+    const card = (cy, ch) => this.add.rectangle(W/2, cy, W-52, ch, 0xffffff, 0.78)
+      .setStrokeStyle(2, 0xffffff, 0.95).setDepth(-30);
+    card(206, 122);   // shards / best / energy / streak strip
+    card(612, 322);   // trail colours + leaderboard
 
-    this.add.text(36,160,`Shards: ${s.shards}`,{fontSize:'17px',color:'#37e6ff'});
-    this.add.text(36,184,`Best Score: ${s.best}`,{fontSize:'17px',color:'#ffffff'});
+    // the critter as a mascot beside the title
+    this.add.image(46, 84, 'player').setDepth(-29);
+
+    this.add.text(W/2,80,'PULSE STREAK',{fontSize:'38px',fontStyle:'bold',color:'#123a4a',stroke:'#ffffff',strokeThickness:6}).setOrigin(0.5);
+    this.add.text(W/2,118,'one tap. one streak. one more run.',{fontSize:'13px',fontStyle:'bold',color:'#2b7a62'}).setOrigin(0.5);
+
+    this.add.text(36,160,`Shards: ${s.shards}`,{fontSize:'17px',fontStyle:'bold',color:'#0f7d94'});
+    this.add.text(36,184,`Best Score: ${s.best}`,{fontSize:'17px',fontStyle:'bold',color:'#123a4a'});
 
     // Energy display
-    this.energyText = this.add.text(W-36,160,'',{fontSize:'17px',color:'#ff4d9d'}).setOrigin(1,0);
+    this.energyText = this.add.text(W-36,160,'',{fontSize:'17px',color:'#e0417d'}).setOrigin(1,0);
     this.updateEnergyText(s);
 
     // Daily login streak strip (habit-anchoring reward loop)
     const reward = loginStreakReward(s.loginStreak.count);
-    this.add.text(36,214, `Login Streak: Day ${s.loginStreak.count}`,{fontSize:'14px',color:'#ffdd3c'});
+    this.add.text(36,214, `Login Streak: Day ${s.loginStreak.count}`,{fontSize:'14px',fontStyle:'bold',color:'#b8791a'});
     if(!s.loginStreak.claimedToday){
-      const claim = this.add.text(W-36,214,`[CLAIM +${reward}]`,{fontSize:'14px',color:'#6bff8f'}).setOrigin(1,0).setInteractive();
+      const claim = this.add.text(W-36,214,`[CLAIM +${reward}]`,{fontSize:'14px',fontStyle:'bold',color:'#1f8a52'}).setOrigin(1,0).setInteractive();
       claim.on('pointerdown',()=>{
         let s2 = loadSave(); s2.shards += reward; s2.loginStreak.claimedToday = true; save(s2);
         this.scene.restart();
       });
     } else {
-      this.add.text(W-36,214,'claimed today',{fontSize:'12px',color:'#5a5270'}).setOrigin(1,0);
+      this.add.text(W-36,214,'claimed today',{fontSize:'12px',color:'#6b7b74'}).setOrigin(1,0);
     }
     this.drawStreakPips(s.loginStreak.count);
 
     // Play button
-    const playBtn = this.add.rectangle(W/2,330,260,64,0x37e6ff).setInteractive();
-    this.add.text(W/2,330,'PLAY',{fontSize:'26px',fontStyle:'bold',color:'#0a0612'}).setOrigin(0.5);
+    const playBtn = this.add.rectangle(W/2,330,260,64,0x2eb872).setStrokeStyle(3,0xffffff).setInteractive();
+    this.add.text(W/2,330,'PLAY',{fontSize:'26px',fontStyle:'bold',color:'#ffffff'}).setOrigin(0.5);
     playBtn.on('pointerdown', ()=>{
       let s3 = loadSave(); s3 = regenEnergy(s3);
       if(s3.energy.count <= 0){
@@ -366,32 +388,32 @@ class MenuScene extends Phaser.Scene{
     });
 
     // Shop button
-    const shopBtn = this.add.rectangle(W/2,410,260,50,0x241a3d).setInteractive();
-    this.add.text(W/2,410,'SHOP / UPGRADES',{fontSize:'16px',color:'#ffffff'}).setOrigin(0.5);
+    const shopBtn = this.add.rectangle(W/2,410,260,50,0xffd23c).setStrokeStyle(3,0xffffff).setInteractive();
+    this.add.text(W/2,410,'SHOP / UPGRADES',{fontSize:'16px',fontStyle:'bold',color:'#6b4a06'}).setOrigin(0.5);
     shopBtn.on('pointerdown', ()=> this.openShop());
 
     // Trail skins row
-    this.add.text(36,462,'Trail Colors (tap to equip):',{fontSize:'13px',color:'#9a8fc2'});
+    this.add.text(36,462,'Trail Colors (tap to equip):',{fontSize:'13px',fontStyle:'bold',color:'#2b7a62'});
     this.drawTrails(s);
 
     // Leaderboard
-    this.add.text(36,552,'Local Leaderboard (Top 10):',{fontSize:'14px',color:'#9a8fc2'});
+    this.add.text(36,552,'Local Leaderboard (Top 10):',{fontSize:'14px',fontStyle:'bold',color:'#2b7a62'});
     const top = [...s.leaderboard].sort((a,b)=>b.score-a.score).slice(0,10);
     top.forEach((row,i)=>{
-      this.add.text(36,577+i*20,`${i+1}. ${row.name}  —  ${row.score}`,{fontSize:'13px',color:'#e8e4f5'});
+      this.add.text(36,577+i*20,`${i+1}. ${row.name}  —  ${row.score}`,{fontSize:'13px',color:'#1d3f4d'});
     });
     if(top.length===0){
-      this.add.text(36,577,'No runs yet — be the first.',{fontSize:'13px',color:'#5a5270'});
+      this.add.text(36,577,'No runs yet — be the first.',{fontSize:'13px',color:'#6b7b74'});
     }
 
-    this.add.text(W/2,H-16,`v${APP_VERSION} · Phaser 3 (MIT) · offline, no ads, no tracking`,{fontSize:'10px',color:'#453f5c'}).setOrigin(0.5);
+    this.add.text(W/2,H-16,`v${APP_VERSION} · Phaser 3 (MIT) · offline, no ads, no tracking`,{fontSize:'10px',color:'#5c6b78'}).setOrigin(0.5);
   }
 
   drawStreakPips(count){
     const cycle = ((count-1) % 7) + 1;
     for(let i=0;i<7;i++){
       const on = i < cycle;
-      this.add.circle(36+i*22, 236, 6, on?0xffdd3c:0x2a2240);
+      this.add.circle(36+i*22, 236, 6, on?0xffc61a:0xc9d6cf);
     }
   }
 
@@ -402,7 +424,7 @@ class MenuScene extends Phaser.Scene{
   }
 
   showToast(msg){
-    const t = this.add.text(W/2,H/2,msg,{fontSize:'16px',color:'#fff',backgroundColor:'#000',padding:{x:10,y:6}}).setOrigin(0.5).setDepth(50);
+    const t = this.add.text(W/2,H/2,msg,{fontSize:'16px',fontStyle:'bold',color:'#ffffff',backgroundColor:'#123a4a',padding:{x:12,y:8}}).setOrigin(0.5).setDepth(50);
     this.tweens.add({targets:t,alpha:0,delay:1200,duration:400,onComplete:()=>t.destroy()});
   }
 
@@ -420,7 +442,7 @@ class MenuScene extends Phaser.Scene{
     const startX = 36, y = 492, gap = 40;
     TRAIL_POOL.forEach((hex,i)=>{
       const owned = s.trails.includes(hex);
-      const c = this.add.circle(startX+i*gap, y, 15, owned?parseInt(hex,16):0x201936).setStrokeStyle(2, s.equipped===hex?0xffffff:0x000000);
+      const c = this.add.circle(startX+i*gap, y, 15, owned?parseInt(hex,16):0xc9d6cf).setStrokeStyle(3, s.equipped===hex?0x123a4a:0xffffff);
       if(owned){
         c.setInteractive();
         c.on('pointerdown',()=>{ let s2=loadSave(); s2.equipped=hex; save(s2); this.scene.restart(); });
@@ -431,8 +453,8 @@ class MenuScene extends Phaser.Scene{
   }
 
   openShop(){
-    const panel = this.add.rectangle(W/2,H/2,W-40,500,0x150f26).setStrokeStyle(2,0x2a2246).setDepth(70);
-    const closeBtn = this.add.text(W/2+200,H/2-230,'✕',{fontSize:'22px',color:'#fff'}).setOrigin(0.5).setDepth(71).setInteractive();
+    const panel = this.add.rectangle(W/2,H/2,W-40,500,0xf4fbf7).setStrokeStyle(3,0x2eb872).setDepth(70);
+    const closeBtn = this.add.text(W/2+200,H/2-230,'✕',{fontSize:'22px',fontStyle:'bold',color:'#123a4a'}).setOrigin(0.5).setDepth(71).setInteractive();
     const items = [
       {key:'jump', name:'Jump Boost (higher clear)', base:25},
       {key:'magnet', name:'Shard Magnet (+radius)', base:22},
@@ -442,15 +464,15 @@ class MenuScene extends Phaser.Scene{
     const render = ()=>{
       nodes.forEach(n=>n.destroy()); nodes.length=0;
       const s2 = loadSave();
-      nodes.push(this.add.text(W/2,H/2-190,'SHOP',{fontSize:'22px',fontStyle:'bold',color:'#fff'}).setOrigin(0.5).setDepth(71));
-      nodes.push(this.add.text(W/2,H/2-160,`Shards: ${s2.shards}`,{fontSize:'16px',color:'#37e6ff'}).setOrigin(0.5).setDepth(71));
+      nodes.push(this.add.text(W/2,H/2-190,'SHOP',{fontSize:'22px',fontStyle:'bold',color:'#123a4a'}).setOrigin(0.5).setDepth(71));
+      nodes.push(this.add.text(W/2,H/2-160,`Shards: ${s2.shards}`,{fontSize:'16px',fontStyle:'bold',color:'#0f7d94'}).setOrigin(0.5).setDepth(71));
       items.forEach((it,i)=>{
         const lvl = s2.upgrades[it.key];
         const cost = it.base * (lvl+1);
         const y = H/2 - 110 + i*80;
-        nodes.push(this.add.text(W/2-160,y,`${it.name}  Lv.${lvl}`,{fontSize:'13px',color:'#fff',wordWrap:{width:210}}).setDepth(71));
-        const buyBtn = this.add.rectangle(W/2+150,y+8,80,34,0x37e6ff).setDepth(71).setInteractive();
-        const buyTxt = this.add.text(W/2+150,y+8,`Buy ${cost}`,{fontSize:'12px',color:'#0a0612'}).setOrigin(0.5).setDepth(72);
+        nodes.push(this.add.text(W/2-160,y,`${it.name}  Lv.${lvl}`,{fontSize:'13px',fontStyle:'bold',color:'#1d3f4d',wordWrap:{width:210}}).setDepth(71));
+        const buyBtn = this.add.rectangle(W/2+150,y+8,80,34,0x2eb872).setDepth(71).setInteractive();
+        const buyTxt = this.add.text(W/2+150,y+8,`Buy ${cost}`,{fontSize:'12px',fontStyle:'bold',color:'#ffffff'}).setOrigin(0.5).setDepth(72);
         nodes.push(buyBtn, buyTxt);
         buyBtn.on('pointerdown',()=>{
           const s3 = loadSave();
