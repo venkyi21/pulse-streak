@@ -19,14 +19,24 @@ const fs = require('node:fs');
 const SS = 4;   // supersamples per axis
 
 class Canvas {
+  /**
+   * @param background colour to prefill with, or `null` for a transparent
+   *   canvas (needed for adaptive launcher-icon foregrounds, which must let the
+   *   background layer show through).
+   */
   constructor(width, height, background = 0xffffff) {
     this.width = width;
     this.height = height;
     this.buf = new Float64Array(width * height * 3);
+    this.alpha = new Float64Array(width * height);
+    this.hasAlpha = background === null;
     this.fill = { r: 255, g: 255, b: 255, a: 1 };
-    const [r, g, b] = Canvas.rgb(background);
-    for (let i = 0; i < width * height; i++) {
-      this.buf[i * 3] = r; this.buf[i * 3 + 1] = g; this.buf[i * 3 + 2] = b;
+    if (!this.hasAlpha) {
+      const [r, g, b] = Canvas.rgb(background);
+      for (let i = 0; i < width * height; i++) {
+        this.buf[i * 3] = r; this.buf[i * 3 + 1] = g; this.buf[i * 3 + 2] = b;
+        this.alpha[i] = 1;
+      }
     }
   }
 
@@ -50,11 +60,17 @@ class Canvas {
           }
         }
         if (!hits) continue;
-        const a = this.fill.a * (hits / (SS * SS));
-        const i = (py * this.width + px) * 3;
-        this.buf[i] = this.buf[i] * (1 - a) + this.fill.r * a;
-        this.buf[i + 1] = this.buf[i + 1] * (1 - a) + this.fill.g * a;
-        this.buf[i + 2] = this.buf[i + 2] * (1 - a) + this.fill.b * a;
+        const sa = this.fill.a * (hits / (SS * SS));
+        const p = py * this.width + px;
+        const i = p * 3;
+        // Standard source-over compositing on non-premultiplied colour.
+        const da = this.alpha[p];
+        const oa = sa + da * (1 - sa);
+        if (oa <= 0) { this.alpha[p] = 0; continue; }
+        this.buf[i] = (this.fill.r * sa + this.buf[i] * da * (1 - sa)) / oa;
+        this.buf[i + 1] = (this.fill.g * sa + this.buf[i + 1] * da * (1 - sa)) / oa;
+        this.buf[i + 2] = (this.fill.b * sa + this.buf[i + 2] * da * (1 - sa)) / oa;
+        this.alpha[p] = oa;
       }
     }
   }
@@ -131,26 +147,29 @@ class Canvas {
     }
   }
 
-  /** Write a PNG, optionally nearest-neighbour scaled. */
+  /** Write a PNG (RGB, or RGBA when the canvas was created transparent). */
   writePng(file, scale = 1) {
     const OW = Math.round(this.width * scale), OH = Math.round(this.height * scale);
-    const raw = Buffer.alloc(OH * (OW * 3 + 1));
+    const ch = this.hasAlpha ? 4 : 3;
+    const raw = Buffer.alloc(OH * (OW * ch + 1));
     for (let y = 0; y < OH; y++) {
-      const rs = y * (OW * 3 + 1);
+      const rs = y * (OW * ch + 1);
       raw[rs] = 0;
       for (let x = 0; x < OW; x++) {
         const sy = Math.min(this.height - 1, Math.floor(y / scale));
         const sx = Math.min(this.width - 1, Math.floor(x / scale));
-        const i = (sy * this.width + sx) * 3;
-        const o = rs + 1 + x * 3;
+        const p = sy * this.width + sx;
+        const i = p * 3;
+        const o = rs + 1 + x * ch;
         raw[o] = Math.round(this.buf[i]);
         raw[o + 1] = Math.round(this.buf[i + 1]);
         raw[o + 2] = Math.round(this.buf[i + 2]);
+        if (ch === 4) raw[o + 3] = Math.round(this.alpha[p] * 255);
       }
     }
     const ihdr = Buffer.alloc(13);
     ihdr.writeUInt32BE(OW, 0); ihdr.writeUInt32BE(OH, 4);
-    ihdr[8] = 8; ihdr[9] = 2;
+    ihdr[8] = 8; ihdr[9] = this.hasAlpha ? 6 : 2;
     fs.writeFileSync(file, Buffer.concat([
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
       chunk('IHDR', ihdr),

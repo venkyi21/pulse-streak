@@ -1,6 +1,6 @@
 {
   "name": "pulse-streak",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Pulse Streak — one-tap endless runner for kids (Phaser 3, single-file build)",
   "license": "UNLICENSED",
@@ -19,11 +19,12 @@
     "assets": "node scripts/make-store-assets.js",
     "android:add": "npm run build:www && npx cap add android && npm run android:patch",
     "android:patch": "node scripts/patch-android.js",
-    "android:sync": "npm run build:www && npx cap sync android && npm run version:sync",
+    "android:sync": "npm run build:www && npx cap sync android && npm run version:sync && npm run icons",
     "android:open": "npx cap open android",
     "android:bundle": "npm run android:sync && cd android && gradlew.bat bundleRelease",
     "android:apk": "npm run android:sync && cd android && gradlew.bat assembleRelease",
-    "release:preflight": "npm test && npm run check && npm run version:check"
+    "release:preflight": "npm test && npm run check && npm run version:check",
+    "icons": "node scripts/make-app-icons.js"
   },
   "keywords": [
     "phaser",
