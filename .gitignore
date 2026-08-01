@@ -55,3 +55,6 @@ version.json
 # Local copy of Phaser's own source, kept only as a reading aid while building.
 # Not part of the app: phaser.min.js is what ships.
 .phaser-src-ref/
+
+# Rendered promo video: tens of MB, regenerate with npm run video
+store-assets/*.mp4

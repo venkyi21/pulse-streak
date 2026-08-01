@@ -16,7 +16,7 @@
 const zlib = require('node:zlib');
 const fs = require('node:fs');
 
-const SS = 4;   // supersamples per axis
+let DEFAULT_SS = 4;   // supersamples per axis
 
 class Canvas {
   /**
@@ -24,11 +24,12 @@ class Canvas {
    *   canvas (needed for adaptive launcher-icon foregrounds, which must let the
    *   background layer show through).
    */
-  constructor(width, height, background = 0xffffff) {
+  constructor(width, height, background = 0xffffff, samples = DEFAULT_SS) {
     this.width = width;
     this.height = height;
-    this.buf = new Float64Array(width * height * 3);
-    this.alpha = new Float64Array(width * height);
+    this.ss = samples;
+    this.buf = new Float32Array(width * height * 3);
+    this.alpha = new Float32Array(width * height);
     this.hasAlpha = background === null;
     this.fill = { r: 255, g: 255, b: 255, a: 1 };
     if (!this.hasAlpha) {
@@ -54,13 +55,13 @@ class Canvas {
     for (let py = py0; py <= py1; py++) {
       for (let px = px0; px <= px1; px++) {
         let hits = 0;
-        for (let sy = 0; sy < SS; sy++) {
-          for (let sx = 0; sx < SS; sx++) {
-            if (inside(px + (sx + 0.5) / SS, py + (sy + 0.5) / SS)) hits++;
+        for (let sy = 0; sy < this.ss; sy++) {
+          for (let sx = 0; sx < this.ss; sx++) {
+            if (inside(px + (sx + 0.5) / this.ss, py + (sy + 0.5) / this.ss)) hits++;
           }
         }
         if (!hits) continue;
-        const sa = this.fill.a * (hits / (SS * SS));
+        const sa = this.fill.a * (hits / (this.ss * this.ss));
         const p = py * this.width + px;
         const i = p * 3;
         // Standard source-over compositing on non-premultiplied colour.
