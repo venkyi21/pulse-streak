@@ -19,7 +19,7 @@ please keep it that way, since listing claims are enforceable.
 | Ads | None |
 | Privacy policy URL | `https://venkyi21.github.io/pulse-streak/privacy-policy.html` |
 | Website | `https://venkyi21.github.io/pulse-streak/` |
-| Contact email | **you must supply one — see the note at the bottom** |
+| Contact email | `svenkatramar21+pulsestreak@gmail.com` |
 
 ## Short description
 
@@ -124,16 +124,22 @@ sharing question is **No**:
 
 ---
 
-## Two things you must do before submitting
+## Prerequisites — both done
 
-1. **Contact email.** Stores publish it on the listing. I deliberately did *not*
-   put your personal Gmail into a public repository — scrapers harvest those.
-   Create a dedicated address (a Gmail alias or `support@` on a domain you own),
-   then replace `PUT-YOUR-SUPPORT-EMAIL@example.com` in
-   [`docs/privacy-policy.html`](docs/privacy-policy.html) and fill it in here.
+- [x] **Contact email** — `svenkatramar21+pulsestreak@gmail.com`, a plus-alias so
+      app mail can be filtered and any leak is traceable. Set in this file and in
+      [`docs/privacy-policy.html`](docs/privacy-policy.html).
+- [x] **Privacy policy published** — live and returning HTTP 200 at
+      <https://venkyi21.github.io/pulse-streak/privacy-policy.html>, served over
+      HTTPS with `http://` redirecting. Verified, not assumed.
 
-2. **Publish the privacy policy.** In the repo: **Settings → Pages → Source:
-   Deploy from a branch → `main` → `/docs` → Save.** After a minute the policy is
-   live at `https://venkyi21.github.io/pulse-streak/privacy-policy.html`. Open it
-   and confirm it loads before pasting the URL into the console — a dead privacy
-   policy link is a common rejection reason.
+## Still to do before you submit
+
+1. **Test the build on a real phone** (Phase 4 in [NEXT-STEPS.md](NEXT-STEPS.md)).
+   Do not submit a build nobody has played on hardware.
+2. **Check the console's current `targetSdk` minimum.** We ship 35. The annual
+   deadline falls on 31 August, so 36 may already be required — verify against
+   the console rather than trusting this file.
+3. **Register the Indus developer account**, then upload
+   `pulse-streak-1.0.0-10000.aab` from the
+   [v1.0.0 release](https://github.com/venkyi21/pulse-streak/releases/tag/v1.0.0).
