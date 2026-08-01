@@ -27,16 +27,31 @@ to do until the review completes.
 
 149 tests, zero dependencies to install.
 
-## Remaining — all on the Indus console
+## Submission — done
 
-Follow **[SUBMISSION.md](SUBMISSION.md)**. In short:
+- [x] Indus developer account registered
+- [x] Target-SDK requirement confirmed: the console wants **34 or higher**, we ship **35**
+- [x] App created as `com.pulsestreak.game`, build uploaded
+- [x] Listing copy, graphics, privacy policy URL and support details filled in
+- [x] Content-rating and data-safety forms completed — every answer "no"
+- [x] Submitted, **In Review** since 1 Aug 2026
 
-- [ ] Register the Indus developer account (identity/KYC is theirs to verify, not something that can be scripted)
-- [ ] Confirm the console's **current target-SDK minimum** — we ship 35, and the annual deadline is 31 August
-- [ ] Create the app, upload `pulse-streak-1.0.1-10001.aab`
-- [ ] Paste the listing copy and upload the graphics
-- [ ] Answer the content-rating and data-safety forms (every answer is "no")
-- [ ] Submit for review
+### Two things learned at the upload step
+
+- **v1.0.2 never built.** Generated launcher icons broke `aapt2` at the Gradle
+  step even though the PNGs verified clean structurally. Fixed in v1.0.3 by
+  re-encoding them through libpng, which took the hand-rolled PNG encoder out of
+  the Android build path.
+- **An AAB upload asks for your keystore**, because the store has to sign the
+  APKs it generates. Uploading an **APK** instead avoids handing over the private
+  key, and costs nothing here: the app has no native libraries, one language, and
+  procedural art, so a bundle offers no split it could optimise.
+
+### While waiting
+
+Do not resubmit or create a second listing — duplicates slow reviews down. If it
+is rejected the notice cites a specific policy: fix it, `npm version patch`, tag,
+and upload the new signed build.
 
 ## Known gaps, none blocking
 
