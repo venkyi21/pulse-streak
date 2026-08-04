@@ -120,3 +120,38 @@ test('the store assets a listing needs are all present', () => {
     assert.ok(fs.statSync(p).size > 1000, `${f} looks empty`);
   }
 });
+
+test('admin tooling is never published to the web', () => {
+  // docs/ is what GitHub Pages serves. The dashboard is operator tooling and
+  // there is no way to password-protect a static file, so "admin only" means
+  // "not in docs/". This test is the guard that keeps it that way.
+  const docs = path.join(ROOT, 'docs');
+  const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true })
+    .flatMap((e) => (e.isDirectory() ? walk(path.join(dir, e.name)) : [path.join(dir, e.name)]));
+  const published = fs.existsSync(docs) ? walk(docs).map((f) => path.basename(f)) : [];
+  assert.equal(published.includes('distribution-dashboard.html'), false,
+    'the admin dashboard must not be inside docs/ — Pages would serve it worldwide');
+
+  const adminDir = path.join(ROOT, 'admin');
+  if (fs.existsSync(adminDir)) {
+    assert.ok(fs.existsSync(path.join(adminDir, 'distribution-dashboard.html')),
+      'the dashboard lives in admin/');
+    // and nothing sensitive should ever be parked in there
+    const risky = walk(adminDir).filter((f) => /\.(jks|keystore|b64|p12|env)$/i.test(f));
+    assert.deepEqual(risky, [], 'admin/ must never hold signing material or secrets');
+  }
+});
+
+test('the dashboard is self-contained and opens from disk', () => {
+  const page = path.join(ROOT, 'admin', 'distribution-dashboard.html');
+  if (!fs.existsSync(page)) return;
+  const html = fs.readFileSync(page, 'utf8');
+  assert.match(html, /^<!DOCTYPE html>/, 'must be a standalone document');
+  assert.match(html, /STATUS:BEGIN/, 'npm run status needs its injection markers');
+  // no external requests: it has to work offline, from file://
+  const remote = (html.match(/(?:src|href)\s*=\s*["'](https?:)?\/\//gi) || []);
+  assert.deepEqual(remote, [], `dashboard loads remote assets: ${remote.join(', ')}`);
+  const status = /const STATUS = (\{[\s\S]*?\});/.exec(html);
+  assert.ok(status, 'STATUS block present');
+  assert.doesNotThrow(() => JSON.parse(status[1]), 'STATUS must be valid JSON');
+});

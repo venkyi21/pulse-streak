@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pulse Streak — Distribution Control</title>
+<style>
+  /* ── tokens ──────────────────────────────────────────────────────────────
+     Neutrals are biased toward the game's sky-cyan rather than pure grey, so
+     they read as chosen. The accent is the sky hue; live/pending/blocked are
+     semantic and deliberately do not reuse it. */
+  :root {
+    color-scheme: light dark;
+    --ground:   #f2f7f7;
+    --surface:  #ffffff;
+    --raised:   #e9f1f1;
+    --line:     #d3e1e2;
+    --ink:      #0c1a20;
+    --ink-soft: #4f6a70;
+    --muted:    #7b9297;
+    --accent:   #0d8ba6;
+    --accent-q: #e2f3f7;
+    --live:     #1f8a5c;
+    --live-q:   #e0f2e9;
+    --pending:  #a8720c;
+    --pending-q:#fbf0d9;
+    --blocked:  #b8383c;
+    --blocked-q:#fbe6e6;
+    --inert:    #7b9297;
+    --inert-q:  #eaf0f0;
+    --shadow:   0 1px 2px rgba(12,26,32,.06), 0 8px 24px -16px rgba(12,26,32,.18);
+
+    --mono: ui-monospace, "SFMono-Regular", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ground:   #0b1316;
+      --surface:  #121e22;
+      --raised:   #18272c;
+      --line:     #24373d;
+      --ink:      #e3efec;
+      --ink-soft: #a8c0c2;
+      --muted:    #7e979a;
+      --accent:   #3ec3de;
+      --accent-q: #12313a;
+      --live:     #4cc189;
+      --live-q:   #102f24;
+      --pending:  #e0ab48;
+      --pending-q:#33280f;
+      --blocked:  #ef7376;
+      --blocked-q:#3a1c1e;
+      --inert:    #7e979a;
+      --inert-q:  #1b2a2e;
+      --shadow:   0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.7);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground:#0b1316; --surface:#121e22; --raised:#18272c; --line:#24373d;
+    --ink:#e3efec; --ink-soft:#a8c0c2; --muted:#7e979a;
+    --accent:#3ec3de; --accent-q:#12313a;
+    --live:#4cc189; --live-q:#102f24; --pending:#e0ab48; --pending-q:#33280f;
+    --blocked:#ef7376; --blocked-q:#3a1c1e; --inert:#7e979a; --inert-q:#1b2a2e;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"] {
+    --ground:#f2f7f7; --surface:#ffffff; --raised:#e9f1f1; --line:#d3e1e2;
+    --ink:#0c1a20; --ink-soft:#4f6a70; --muted:#7b9297;
+    --accent:#0d8ba6; --accent-q:#e2f3f7;
+    --live:#1f8a5c; --live-q:#e0f2e9; --pending:#a8720c; --pending-q:#fbf0d9;
+    --blocked:#b8383c; --blocked-q:#fbe6e6; --inert:#7b9297; --inert-q:#eaf0f0;
+    --shadow:0 1px 2px rgba(12,26,32,.06), 0 8px 24px -16px rgba(12,26,32,.18);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font: 15px/1.55 var(--sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 40px 22px 88px; }
+
+  /* ── masthead ───────────────────────────────────────────────────────── */
+  .eyebrow {
+    font: 600 11px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase;
+    color: var(--accent); margin: 0 0 12px;
+  }
+  h1 { font-size: clamp(26px, 4vw, 36px); line-height: 1.1; margin: 0 0 8px;
+       letter-spacing: -.02em; text-wrap: balance; font-weight: 700; }
+  .lede { margin: 0; color: var(--ink-soft); max-width: 62ch; }
+  .snapshot { margin: 14px 0 0; font: 500 12px/1.4 var(--mono); color: var(--muted); }
+
+  /* ── stat strip ─────────────────────────────────────────────────────── */
+  .tiles { display: grid; gap: 12px; margin: 30px 0 0;
+           grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .tile { background: var(--surface); border: 1px solid var(--line);
+          border-radius: 10px; padding: 14px 16px; box-shadow: var(--shadow); }
+  .tile dt { font: 600 10px/1 var(--mono); letter-spacing: .12em;
+             text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+  .tile dd { margin: 0; font: 700 26px/1 var(--sans); letter-spacing: -.02em;
+             font-variant-numeric: tabular-nums; }
+  .tile dd small { font: 500 13px/1 var(--mono); color: var(--muted); margin-left: 4px; }
+  .tile.ok dd { color: var(--live); }
+  .tile.warn dd { color: var(--blocked); }
+
+  /* ── sections ───────────────────────────────────────────────────────── */
+  section { margin-top: 44px; }
+  .shead { display: flex; align-items: baseline; justify-content: space-between;
+           gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
+  h2 { font-size: 19px; margin: 0; letter-spacing: -.01em; font-weight: 700; }
+  .note { margin: 0 0 16px; color: var(--muted); font-size: 13px; max-width: 68ch; }
+
+  /* ── host table ─────────────────────────────────────────────────────── */
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px;
+            background: var(--surface); box-shadow: var(--shadow); }
+  table { width: 100%; border-collapse: collapse; min-width: 620px; }
+  th, td { text-align: left; padding: 11px 16px; border-bottom: 1px solid var(--line); }
+  th { font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+       color: var(--muted); background: var(--raised); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.code, td.num { font: 500 13px/1.4 var(--mono); font-variant-numeric: tabular-nums; }
+  td.num { text-align: right; color: var(--ink-soft); }
+  .host { font-weight: 600; }
+  .host span { display: block; font: 500 12px/1.4 var(--mono); color: var(--muted); }
+  a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+  a:hover { text-decoration-thickness: 2px; }
+
+  /* ── pills ──────────────────────────────────────────────────────────── */
+  .pill { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+          font: 600 11px/1 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+          padding: 5px 9px; border-radius: 999px; border: 1px solid transparent; }
+  .pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%;
+                  background: currentColor; }
+  .p-live    { color: var(--live);    background: var(--live-q); }
+  .p-pending { color: var(--pending); background: var(--pending-q); }
+  .p-blocked { color: var(--blocked); background: var(--blocked-q); }
+  .p-inert   { color: var(--inert);   background: var(--inert-q); }
+
+  /* ── filters ────────────────────────────────────────────────────────── */
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 16px; }
+  .chip { font: 600 12px/1 var(--sans); padding: 8px 13px; border-radius: 999px;
+          border: 1px solid var(--line); background: var(--surface); color: var(--ink-soft);
+          cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+  .chip:hover { border-color: var(--accent); color: var(--accent); }
+  .chip[aria-pressed="true"] { background: var(--accent); border-color: var(--accent);
+                               color: var(--surface); }
+  :root[data-theme="dark"] .chip[aria-pressed="true"],
+  .chip[aria-pressed="true"] { color: #08171c; }
+  .chip .n { font-family: var(--mono); opacity: .75; margin-left: 5px; }
+
+  /* ── progress ───────────────────────────────────────────────────────── */
+  .meter { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; }
+  .track { flex: 1; height: 8px; border-radius: 999px; background: var(--raised);
+           overflow: hidden; border: 1px solid var(--line); }
+  .fill { height: 100%; width: 0%; background: var(--live);
+          transition: width .35s cubic-bezier(.4,0,.2,1); }
+  .meter output { font: 600 12px/1 var(--mono); color: var(--ink-soft);
+                  font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+  /* ── channel rows ───────────────────────────────────────────────────── */
+  .rows { display: flex; flex-direction: column; gap: 8px; }
+  .row { display: grid; align-items: center; gap: 14px;
+         grid-template-columns: 26px minmax(180px,1.5fr) 96px 92px 1fr 108px;
+         background: var(--surface); border: 1px solid var(--line);
+         border-radius: 10px; padding: 12px 16px; box-shadow: var(--shadow); }
+  .row.is-done { border-color: var(--live); background: linear-gradient(0deg, var(--live-q), var(--live-q)); }
+  .row[hidden] { display: none; }
+  .row .name { font-weight: 650; }
+  .row .name span { display: block; font-size: 12.5px; color: var(--muted); font-weight: 400; }
+  .row .cost, .row .effort { font: 500 12.5px/1.3 var(--mono); color: var(--ink-soft);
+                             font-variant-numeric: tabular-nums; }
+  .row .why { font-size: 13px; color: var(--ink-soft); }
+  .row .act { text-align: right; }
+  input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--live);
+                           cursor: pointer; margin: 0; }
+  .row.is-done .name { text-decoration: line-through; text-decoration-color: var(--muted); }
+  @media (max-width: 720px) {
+    .row { grid-template-columns: 26px 1fr auto; row-gap: 8px; }
+    .row .cost, .row .effort, .row .why { grid-column: 2 / -1; }
+    .row .act { grid-column: 2 / -1; text-align: left; }
+  }
+
+  button.copy { font: 600 12px/1 var(--sans); padding: 9px 13px; border-radius: 8px;
+                border: 1px solid var(--accent); background: transparent;
+                color: var(--accent); cursor: pointer; }
+  button.copy:hover { background: var(--accent-q); }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  .toast { position: fixed; left: 50%; bottom: 26px; transform: translate(-50%, 16px);
+           background: var(--ink); color: var(--ground); font: 600 13px/1 var(--sans);
+           padding: 11px 18px; border-radius: 999px; opacity: 0; pointer-events: none;
+           transition: opacity .2s, transform .2s; }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  .callout { margin-top: 44px; border: 1px solid var(--line); border-left: 3px solid var(--pending);
+             background: var(--surface); border-radius: 10px; padding: 18px 20px;
+             box-shadow: var(--shadow); }
+  .callout h3 { margin: 0 0 8px; font-size: 15px; }
+  .callout p { margin: 0 0 10px; color: var(--ink-soft); font-size: 14px; max-width: 70ch; }
+  .callout p:last-child { margin-bottom: 0; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <p class="eyebrow" id="eyebrow">Pulse Streak · com.pulsestreak.game</p>
+  <h1>Distribution control</h1>
+  <p class="lede">Where the game is reachable today, and every free channel still on the table.
+  Two hosts are live and serving; one store is blocked on a resubmission.</p>
+  <p class="snapshot" id="snapshot"></p>
+
+  <dl class="tiles">
+    <div class="tile ok"><dt>Live channels</dt><dd id="tLive">–</dd></div>
+    <div class="tile"><dt>Cost to date</dt><dd>₹0<small>free tier only</small></dd></div>
+    <div class="tile warn"><dt>Blocked</dt><dd>1<small>Indus on hold</small></dd></div>
+    <div class="tile ok"><dt>Endpoints up</dt><dd id="tHosts">–</dd></div>
+  </dl>
+
+  <section>
+    <div class="shead">
+      <h2>Hosts</h2>
+      <button class="copy" id="copyPlay" type="button">Copy play link</button>
+    </div>
+    <p class="note">All served from GitHub Pages on the free tier. The play build is generated
+    from the same two files the Android app wraps, so it cannot drift from the shipped game.</p>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr><th scope="col">Endpoint</th><th scope="col">Purpose</th><th scope="col">Status</th>
+          <th scope="col">Code</th><th scope="col">Latency</th></tr>
+        </thead>
+        <tbody id="hostRows"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="shead"><h2>Distribution channels</h2></div>
+    <p class="note">Tick a channel as you publish to it — progress is saved in this browser.
+    Reach and effort are my estimates, not measured figures. Fees marked <em>verify</em> change
+    without notice; confirm on the platform before relying on them.</p>
+
+    <div class="meter">
+      <div class="track"><div class="fill" id="fill"></div></div>
+      <output id="progress">0 of 12 published</output>
+    </div>
+
+    <div class="filters" id="filters">
+      <button class="chip" type="button" data-filter="all" aria-pressed="true">All<span class="n" data-count="all"></span></button>
+      <button class="chip" type="button" data-filter="live" aria-pressed="false">Live<span class="n" data-count="live"></span></button>
+      <button class="chip" type="button" data-filter="todo" aria-pressed="false">To do<span class="n" data-count="todo"></span></button>
+      <button class="chip" type="button" data-filter="blocked" aria-pressed="false">Blocked<span class="n" data-count="blocked"></span></button>
+      <button class="chip" type="button" data-filter="inert" aria-pressed="false">Not viable<span class="n" data-count="inert"></span></button>
+    </div>
+
+    <div class="rows" id="rows"></div>
+  </section>
+
+  <div class="callout">
+    <h3>Two things to settle before chasing reach</h3>
+    <p><strong>You cannot measure any of this.</strong> The app ships with no analytics by design,
+    which is the right call for a children's app on a store — but it means 10,000 players would
+    teach you nothing about where they quit or whether streaks retain anyone. The web build is the
+    one place you could add cookieless, privacy-preserving analytics without touching the store
+    version. That is a decision worth making deliberately rather than by default.</p>
+    <p><strong>No child has played it yet.</strong> Reach amplifies whatever you already have. If
+    the game does not hold a seven-year-old for three runs, distribution spends attention you only
+    get once. Five kids and an afternoon still outranks every row in the table above.</p>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script>
+  // ── STATUS:BEGIN ── rewritten by `npm run status`; do not hand-edit ──
+  const STATUS = {"checkedAt":"4 Aug 2026","liveCount":6,"hostCount":6,"version":"1.0.5","hosts":[{"label":"Instant play","sub":"/pulse-streak/play/","purpose":"Playable game, no install","state":"live","stateLabel":"Live","code":200,"latency":"123 ms"},{"label":"Landing page","sub":"/pulse-streak/","purpose":"Shareable front door","state":"live","stateLabel":"Live","code":200,"latency":"84 ms"},{"label":"Privacy policy","sub":"/privacy-policy.html","purpose":"Required by every store","state":"live","stateLabel":"Live","code":200,"latency":"33 ms"},{"label":"PWA install","sub":"manifest.webmanifest","purpose":"Home-screen install, no store","state":"live","stateLabel":"Live","code":200,"latency":"29 ms"},{"label":"Source & releases","sub":"github.com/venkyi21/pulse-streak","purpose":"Signed APK / AAB downloads","state":"live","stateLabel":"Live","code":200,"latency":"774 ms"},{"label":"Release pipeline","sub":"CI #25","purpose":"Tag → signed build","state":"live","stateLabel":"Passing","code":"v1.0.5","latency":"2 assets"}]};
+  // ── STATUS:END ──
+
+  const PLAY_URL = "https://venkyi21.github.io/pulse-streak/play/";
+
+  // status: live | todo | blocked | inert
+  const CHANNELS = [
+    { name: "GitHub Pages — instant play", sub: "Web, any device", status: "live",
+      cost: "Free", effort: "Done", why: "No install, no review, no gatekeeper. Your widest reach.",
+      href: PLAY_URL, cta: "Open" },
+    { name: "PWA home-screen install", sub: "Web, installable", status: "live",
+      cost: "Free", effort: "Done", why: "Players add it to their home screen; no store involved.",
+      href: PLAY_URL, cta: "Open" },
+    { name: "Indus Appstore", sub: "Android · India", status: "blocked",
+      cost: "Free", effort: "10 min", why: "On hold. v1.0.5 fixes the cited layout issue — resubmit.",
+      href: "https://developer.indusappstore.com", cta: "Resubmit" },
+    { name: "itch.io", sub: "Web + downloads", status: "todo",
+      cost: "Free", effort: "15 min", why: "No review queue. Best first stop for an indie HTML5 game.",
+      href: "https://itch.io/developers", cta: "Publish" },
+    { name: "Poki", sub: "Web portal", status: "todo",
+      cost: "Free to submit", effort: "1 hr", why: "Millions of daily players; curated, revenue-shared.",
+      href: "https://developers.poki.com", cta: "Submit" },
+    { name: "CrazyGames", sub: "Web portal", status: "todo",
+      cost: "Free to submit", effort: "1 hr", why: "Large casual audience; curated, revenue-shared.",
+      href: "https://developer.crazygames.com", cta: "Submit" },
+    { name: "Newgrounds / Y8", sub: "Web portals", status: "todo",
+      cost: "Free", effort: "30 min", why: "Instant listing, long-tail traffic, no curation gate.",
+      href: "https://www.newgrounds.com", cta: "Publish" },
+    { name: "Amazon Appstore", sub: "Android + Fire", status: "todo",
+      cost: "Free", effort: "1 hr", why: "Same APK. Worldwide, plus Fire tablets.",
+      href: "https://developer.amazon.com/apps-and-games", cta: "Submit" },
+    { name: "Samsung Galaxy Store", sub: "Android", status: "todo",
+      cost: "Free", effort: "1 hr", why: "Preinstalled on every Galaxy — strong in India.",
+      href: "https://seller.samsungapps.com", cta: "Submit" },
+    { name: "Huawei AppGallery", sub: "Android", status: "todo",
+      cost: "Free", effort: "1–2 hr", why: "Third-largest Android store; strong outside the US.",
+      href: "https://developer.huawei.com/consumer/en/appgallery", cta: "Submit" },
+    { name: "Microsoft Store", sub: "Windows, as a PWA", status: "todo",
+      cost: "Free for individuals · verify", effort: "1 hr", why: "Your PWA can be packaged and listed.",
+      href: "https://partner.microsoft.com", cta: "Submit" },
+    { name: "Google Play", sub: "Android · worldwide", status: "todo",
+      cost: "$25 one-time · verify", effort: "2 hr", why: "Not free, but the largest audience by far. Same .aab.",
+      href: "https://play.google.com/console", cta: "Register" },
+    { name: "F-Droid", sub: "Android · FOSS only", status: "inert",
+      cost: "Free", effort: "—", why: "Not eligible: requires an open-source licence, yours is UNLICENSED.",
+      href: "", cta: "" },
+    { name: "APKPure / Aptoide mirrors", sub: "Android", status: "inert",
+      cost: "Free", effort: "—", why: "Skip. They mirror published apps anyway; submitting adds nothing.",
+      href: "", cta: "" }
+  ];
+
+  const PILL = { live: ["p-live","Live"], todo: ["p-pending","To do"],
+                 blocked: ["p-blocked","Blocked"], inert: ["p-inert","Not viable"] };
+  const KEY = "pulse-streak-distribution-v1";
+  const done = new Set(JSON.parse(localStorage.getItem(KEY) || "[]"));
+  const rowsEl = document.getElementById("rows");
+  // "viable" excludes channels that cannot be published to at all
+  const viable = CHANNELS.filter(c => c.status !== "inert");
+
+  CHANNELS.forEach((c, i) => {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.dataset.status = c.status;
+    const isDone = done.has(c.name) || c.status === "live";
+    if (isDone) row.classList.add("is-done");
+
+    const [cls, label] = PILL[c.status];
+    row.innerHTML =
+      '<input type="checkbox" id="ch' + i + '"' +
+        (isDone ? " checked" : "") + (c.status === "inert" ? " disabled" : "") +
+        ' aria-label="Mark ' + c.name + ' as published">' +
+      '<label class="name" for="ch' + i + '">' + c.name + '<span>' + c.sub + '</span></label>' +
+      '<div class="cost">' + c.cost + '</div>' +
+      '<div class="effort">' + c.effort + '</div>' +
+      '<div class="why">' + c.why + '</div>' +
+      '<div class="act">' + (c.href
+        ? '<a href="' + c.href + '" target="_blank" rel="noopener">' + c.cta + ' &rarr;</a>'
+        : '<span class="pill ' + cls + '">' + label + '</span>') + '</div>';
+
+    if (c.href) {
+      const act = row.querySelector(".act");
+      act.insertAdjacentHTML("afterbegin", '<span class="pill ' + cls + '">' + label + '</span> ');
+    }
+
+    row.querySelector("input").addEventListener("change", (e) => {
+      if (e.target.checked) done.add(c.name); else done.delete(c.name);
+      localStorage.setItem(KEY, JSON.stringify([...done]));
+      row.classList.toggle("is-done", e.target.checked);
+      paint();
+    });
+    rowsEl.appendChild(row);
+  });
+
+  function paint() {
+    const published = viable.filter(c => done.has(c.name) || c.status === "live").length;
+    document.getElementById("progress").textContent =
+      published + " of " + viable.length + " published";
+    document.getElementById("fill").style.width =
+      Math.round((published / viable.length) * 100) + "%";
+    const counts = { all: CHANNELS.length, live: 0, todo: 0, blocked: 0, inert: 0 };
+    CHANNELS.forEach(c => counts[c.status]++);
+    document.querySelectorAll("[data-count]").forEach(el => {
+      el.textContent = counts[el.dataset.count];
+    });
+  }
+
+  document.getElementById("filters").addEventListener("click", (e) => {
+    const btn = e.target.closest(".chip");
+    if (!btn) return;
+    document.querySelectorAll(".chip").forEach(c =>
+      c.setAttribute("aria-pressed", String(c === btn)));
+    const want = btn.dataset.filter;
+    document.querySelectorAll(".row").forEach(r => {
+      r.hidden = want !== "all" && r.dataset.status !== want;
+    });
+  });
+
+  const toast = document.getElementById("toast");
+  function flash(msg) {
+    toast.textContent = msg;
+    toast.classList.add("show");
+    clearTimeout(flash.t);
+    flash.t = setTimeout(() => toast.classList.remove("show"), 1900);
+  }
+  document.getElementById("copyPlay").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(PLAY_URL);
+      flash("Play link copied");
+    } catch {
+      flash(PLAY_URL);
+    }
+  });
+
+  // ── render live status ────────────────────────────────────────────────
+  const PILL_STATE = { live: 'p-live', blocked: 'p-blocked' };
+  const hostRows = document.getElementById('hostRows');
+  (STATUS.hosts || []).forEach(h => {
+    const tr = document.createElement('tr');
+    tr.innerHTML =
+      '<td class="host">' + h.label + '<span>' + h.sub + '</span></td>' +
+      '<td>' + h.purpose + '</td>' +
+      '<td><span class="pill ' + (PILL_STATE[h.state] || 'p-inert') + '">' + h.stateLabel + '</span></td>' +
+      '<td class="code">' + h.code + '</td>' +
+      '<td class="num">' + h.latency + '</td>';
+    hostRows.appendChild(tr);
+  });
+  document.getElementById('snapshot').textContent =
+    'Endpoints checked ' + STATUS.checkedAt + ' by npm run status · this file cannot poll, so re-run it to refresh';
+  document.getElementById('tHosts').innerHTML =
+    (STATUS.liveCount ?? '–') + '<small>/ ' + (STATUS.hostCount ?? '–') + ' up</small>';
+  document.getElementById('eyebrow').textContent =
+    'Pulse Streak · com.pulsestreak.game' + (STATUS.version ? ' · v' + STATUS.version : '');
+
+  paint();
+</script>
+
+</body>
+</html>
