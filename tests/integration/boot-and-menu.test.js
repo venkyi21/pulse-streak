@@ -76,12 +76,12 @@ test('the menu shows title, stats, and both navigation buttons', () => {
   const menu = openMenu(env);
 
   assert.ok(hasText(menu, 'PULSE STREAK'));
-  assert.ok(hasText(menu, 'Shards: 0'));
-  assert.ok(hasText(menu, 'Best Score: 0'));
+  assert.ok(hasText(menu, '◆ 0'), 'shard count');
+  assert.ok(hasText(menu, 'Best 0'));
   assert.ok(hasText(menu, 'PLAY'));
   assert.ok(hasText(menu, 'SHOP / UPGRADES'));
-  assert.ok(hasText(menu, 'Trail Colors'));
-  assert.ok(hasText(menu, 'Local Leaderboard'));
+  assert.ok(hasText(menu, 'Trail colour'));
+  assert.ok(hasText(menu, 'Best runs'));
 });
 
 test('opening the menu persists energy regen and the login streak in one write', () => {
@@ -163,8 +163,8 @@ test('the login bonus can be claimed once, and pays the day-1 amount', () => {
   const env = loadGame();
   const menu = openMenu(env);
 
-  assert.ok(hasText(menu, '[CLAIM +10]'), 'day 1 pays 10 shards');
-  clickButton(menu, '[CLAIM +10]');
+  assert.ok(hasText(menu, 'CLAIM +10'), 'day 1 pays 10 shards');
+  clickButton(menu, 'CLAIM +10');
 
   const s = env.readSave();
   assert.equal(s.shards, 10);
@@ -182,9 +182,9 @@ test('an already-claimed bonus shows no claim button', () => {
   const menu2 = new env.g.MenuScene();
   menu2.create();
 
-  assert.ok(hasText(menu2, 'claimed today'));
-  assert.equal(hasText(menu2, '[CLAIM'), false);
-  assert.throws(() => clickButton(menu2, '[CLAIM'), /no button labelled/);
+  assert.ok(hasText(menu2, 'bonus claimed'));
+  assert.equal(hasText(menu2, 'CLAIM'), false);
+  assert.throws(() => clickButton(menu2, 'CLAIM'), /no button labelled/);
 });
 
 test('the streak strip lights one pip per day of the 7-day cycle', () => {
@@ -211,7 +211,7 @@ test('the streak strip lights one pip per day of the 7-day cycle', () => {
   assert.equal(pips2.filter((p) => p.fillColor === LIT).length, 5, 'day 5 => five lit pips');
 });
 
-test('the leaderboard renders the top 10 in descending order', () => {
+test('the leaderboard shows the top three inline, highest first', () => {
   const env = loadGame();
   const board = [];
   for (let i = 1; i <= 12; i++) board.push({ name: 'P' + i, score: i * 10 });
@@ -220,9 +220,12 @@ test('the leaderboard renders the top 10 in descending order', () => {
   const menu = openMenu(env);
   const rows = menu.children.list.filter((o) => o.type === 'text' && /^\d+\.\s/.test(o.text));
 
-  assert.equal(rows.length, 10, 'only ten rows are shown');
-  assert.equal(rows[0].text, '1. P12  —  120');
-  assert.equal(rows[9].text, '10. P3  —  30');
+  // Only three are shown inline now; the full ten live behind VIEW ALL, which
+  // is covered in integration/ui-layout.test.js. Ten always-visible rows were
+  // what the store review called clutter.
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0].text, '1. P12  120');
+  assert.equal(rows[2].text, '3. P10  100');
   const scores = rows.map((r) => Number(r.text.split('—')[1]));
   assert.deepEqual(plain(scores), plain([...scores].sort((a, b) => b - a)));
 });

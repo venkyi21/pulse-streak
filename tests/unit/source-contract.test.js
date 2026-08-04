@@ -49,8 +49,10 @@ test('the Phaser game config wires up everything the scenes rely on', () => {
   const { g } = loadGame();
   const c = g.config;
 
-  assert.equal(c.width, g.W);
-  assert.equal(c.height, g.H);
+  // Dimensions now live in the scale block so the canvas is fitted to the
+  // device rather than rendered at a fixed size and clipped.
+  assert.equal(c.scale.width, g.W);
+  assert.equal(c.scale.height, g.H);
   assert.equal(c.parent, 'game-wrap');
   assert.equal(c.physics.default, 'arcade');
   assert.equal(c.physics.arcade.gravity.y, 0,

@@ -135,8 +135,7 @@ test('closing the shop tears the panel down and refreshes the menu', () => {
   const menu = openShop(env);
   assert.ok(hasText(menu, 'SHOP'));
 
-  const close = findText(menu, '✕');
-  close.emit('pointerdown');
+  clickButton(menu, '✕');
 
   assert.equal(hasText(menu, 'Buy 25'), false, 'no orphaned buy buttons left behind');
   assert.equal(menu.__restarts, 1, 'the menu reloads so the new shard total shows');
@@ -146,7 +145,7 @@ test('only owned trail colours are equippable; locked ones show a padlock', () =
   const env = loadGame();
   const menu = openMenu(env);
 
-  const swatches = menu.children.list.filter((o) => o.type === 'circle' && o.radius === 15);
+  const swatches = menu.children.list.filter((o) => o.type === 'circle' && o.radius === 22);
   assert.equal(swatches.length, env.g.TRAIL_POOL.length, 'one swatch per pool colour');
   assert.equal(swatches.filter((c) => c.interactive).length, 1, 'only the default is owned');
   assert.equal(findTexts(menu, '🔒').length, env.g.TRAIL_POOL.length - 1);
@@ -157,7 +156,7 @@ test('tapping an owned trail equips it and persists the choice', () => {
   env.seedSave({ trails: ['0x37e6ff', '0xffdd3c'], equipped: '0x37e6ff' });
   const menu = openMenu(env);
 
-  const swatches = menu.children.list.filter((o) => o.type === 'circle' && o.radius === 15);
+  const swatches = menu.children.list.filter((o) => o.type === 'circle' && o.radius === 22);
   const owned = swatches.filter((c) => c.interactive);
   assert.equal(owned.length, 2);
 
@@ -174,7 +173,7 @@ test('the equipped swatch is the one with the highlighted outline', () => {
 
   const highlighted = menu.children.list.filter(
     // Inverted for the light menu: equipped gets the dark ring, the rest white.
-    (o) => o.type === 'circle' && o.radius === 15 && o.strokeColor === 0x123a4a
+    (o) => o.type === 'circle' && o.radius === 22 && o.strokeColor === 0x123a4a
   );
   assert.equal(highlighted.length, 1);
   assert.equal(highlighted[0].fillColor, parseInt('0xffdd3c', 16));

@@ -386,7 +386,7 @@ test('a full run round-trips into the menu: shards spend, best score shows', () 
   const menu = new env.g.MenuScene();
   menu.create();
 
-  assert.ok(hasText(menu, 'Shards: 30'), 'the run payout is spendable in the shop');
-  assert.ok(hasText(menu, 'Best Score: 21'));
-  assert.ok(hasText(menu, '1. ZZZ  —  21'), 'and the entry shows on the board');
+  assert.ok(hasText(menu, '◆ 30'), 'the run payout is spendable in the shop');
+  assert.ok(hasText(menu, 'Best 21'));
+  assert.ok(hasText(menu, '1. ZZZ  21'), 'and the entry shows on the board');
 });

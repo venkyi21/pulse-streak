@@ -479,6 +479,14 @@ function loadGame({ storage = new FakeStorage(), now = Date.parse('2026-07-30T12
     AUTO: 'AUTO',
     CANVAS: 'CANVAS',
     Scene,
+    // Scale Manager constants. Real values from Phaser 3; the game must declare
+    // FIT/CENTER_BOTH or the canvas renders at a fixed size and gets clipped on
+    // any device narrower than 480 CSS px.
+    Scale: {
+      NONE: 0, WIDTH_CONTROLS_HEIGHT: 1, HEIGHT_CONTROLS_WIDTH: 2,
+      FIT: 3, ENVELOP: 4, RESIZE: 5, EXPAND: 6,
+      NO_CENTER: 0, CENTER_BOTH: 1, CENTER_HORIZONTALLY: 2, CENTER_VERTICALLY: 3
+    },
     Math: {
       Between: (min, max) => Math.floor(randomFn() * (max - min + 1)) + min,
       FloatBetween: (min, max) => randomFn() * (max - min) + min,

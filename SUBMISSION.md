@@ -130,3 +130,56 @@ specific policy — send me the text and I'll fix the build or the listing.
   the data-safety declaration must be updated *before* that version ships, and
   the kids-audience rules in [DEPLOY.md](DEPLOY.md) come into force. Treat it as
   a separate project, not a tweak.
+
+---
+
+## Review hold #1 — resolved in v1.0.4
+
+**2 Aug 2026.** The submission came back **On Hold**:
+
+> *The UI is cluttered / is not compatible with the device dimensions.*
+> *Optimize your UI so that it does not interfere with the core functionalities
+> of the app and submit your app for review again.*
+
+### Root cause
+
+The game declared **no Phaser Scale config**, so the canvas rendered at a fixed
+480×800 **CSS** pixels. A 1080×2400 phone at DPR 3 has a 360px-wide CSS
+viewport, so 120px — a quarter of the playfield — was clipped away by
+`overflow:hidden`:
+
+| Device | CSS viewport | Playfield visible |
+|---|---|---|
+| 720×1600 @2 | 360×800 | **75%** |
+| 1080×2400 @3 | 360×800 | **75%** |
+| 1080×2340 @2.75 | 393×851 | 82% |
+| 1080×2400 @2.625 | 411×914 | 86% |
+
+The energy meter and the daily-bonus button sat **entirely off screen**, and
+obstacles entered 160px later than designed — which is precisely "interferes
+with the core functionality". It went unnoticed in device testing because the
+test phone had a wider viewport, so it degraded quietly rather than obviously.
+
+### Fixes
+
+| Fix | Detail |
+|---|---|
+| Scale manager | `mode: FIT`, `autoCenter: CENTER_BOTH` — the whole playfield is now fitted and centred on any screen |
+| Letterbox treatment | Page background is a sky→meadow gradient, so the bars FIT leaves on tall phones read as scenery rather than dead space |
+| Smooth scaling | Dropped `image-rendering: pixelated`, which would have made scaled vector art jagged |
+| Decluttered menu | Ten always-visible leaderboard rows reduced to a top three plus a VIEW ALL panel |
+| Layout constants | `MARGIN = 24`, `TOUCH_MIN = 44`, applied across menu, shop, game-over and initials prompt |
+| Touch targets | Daily-bonus claim, shop buy buttons, shop close, and the initials SAVE button were all under 44px — now compliant |
+| HUD margins | In-game score and streak text moved off the 20px edge |
+
+### Regression cover
+
+`tests/integration/ui-layout.test.js` — 14 tests encoding the reviewer's
+criteria: scale mode declared, playfield fully visible across six real
+viewports, every target ≥44px, every target ≥24px from each edge, no
+overlapping targets, element-count ceiling, top-three-inline leaderboard, and
+margin checks for the HUD, shop, game-over and initials screens. Verified to
+fail with the scale config removed.
+
+**Resubmit `pulse-streak-1.0.4-10004.apk`** via *Edit Details → Submit for
+Final Review*.
