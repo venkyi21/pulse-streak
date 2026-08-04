@@ -50,7 +50,7 @@
 // Kept in lockstep with package.json by `npm run version:sync`, which also
 // derives the Android versionCode. A test fails if the two ever drift, so the
 // build a player is running is always identifiable from the menu footer.
-const APP_VERSION = '1.0.4';
+const APP_VERSION = '1.0.5';
 
 const W = 480, H = 800;
 // Layout safety: no UI element may sit closer than MARGIN to a canvas edge, and
@@ -498,7 +498,7 @@ class MenuScene extends Phaser.Scene{
   }
 
   openShop(){
-    const panel = this.add.rectangle(W/2,H/2,W-40,500,0xf4fbf7).setStrokeStyle(3,0x2eb872).setDepth(70);
+    const panel = this.add.rectangle(W/2,H/2,W-MARGIN*2,500,0xf4fbf7).setStrokeStyle(3,0x2eb872).setDepth(70);
     const closeHit = this.add.rectangle(W/2+176,H/2-214,TOUCH_MIN,TOUCH_MIN,0xffffff,0.9).setStrokeStyle(2,0x2eb872).setDepth(71).setInteractive();
     const closeBtn = this.add.text(W/2+176,H/2-214,'✕',{fontSize:'20px',fontStyle:'bold',color:'#123a4a'}).setOrigin(0.5).setDepth(72);
     const items = [

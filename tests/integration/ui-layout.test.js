@@ -242,3 +242,34 @@ test('the initials prompt button is reachable and correctly sized', () => {
   assert.ok(b.h >= TOUCH_MIN, `SAVE is only ${Math.round(b.h)}px tall`);
   assert.ok(b.w >= TOUCH_MIN);
 });
+
+test('panel backgrounds respect the safe margin too', () => {
+  // The original version of this suite only checked interactive objects, which
+  // let a 440px-wide shop panel (20px margins) slip through. Panels frame the
+  // content, so a panel that breaches the margin makes everything inside it
+  // look wrong on a rounded-corner screen.
+  const env = loadGame();
+  const menu = openMenu(env, { shards: 500 });
+  clickButton(menu, 'SHOP / UPGRADES');
+
+  const panels = menu.children.list.filter((o) => o.type === 'rectangle' && o.width > 300);
+  assert.ok(panels.length >= 1, 'the shop panel exists');
+  const breaches = panels
+    .map((o) => ({ o, b: box(o) }))
+    .filter(({ b }) => b.left < MARGIN || b.right > env.g.W - MARGIN)
+    .map(({ o }) => `${Math.round(o.width)}x${Math.round(o.height)} panel at x=${Math.round(o.x)}`);
+  assert.deepEqual(plain(breaches), []);
+});
+
+test('the playfield stays uncluttered during a run', () => {
+  const env = loadGame();
+  env.boot();
+  const game = new env.g.GameScene();
+  game.create();
+  tap(game);
+
+  // Core functionality must not compete with UI: during play the only text on
+  // screen is the score and the streak readout.
+  const texts = game.children.list.filter((o) => o.type === 'text');
+  assert.ok(texts.length <= 2, `${texts.length} text elements during play`);
+});
