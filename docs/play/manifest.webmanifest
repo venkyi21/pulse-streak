@@ -1,0 +1,20 @@
+{
+  "name": "Pulse Streak",
+  "short_name": "Pulse Streak",
+  "description": "One tap. One streak. One more run.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "portrait",
+  "background_color": "#a9ecff",
+  "theme_color": "#a9ecff",
+  "version": "1.0.5",
+  "icons": [
+    {
+      "src": "../icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

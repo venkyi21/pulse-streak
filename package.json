@@ -24,7 +24,8 @@
     "android:bundle": "npm run android:sync && cd android && gradlew.bat bundleRelease",
     "android:apk": "npm run android:sync && cd android && gradlew.bat assembleRelease",
     "release:preflight": "npm test && npm run check && npm run version:check",
-    "icons": "node scripts/make-app-icons.js"
+    "icons": "node scripts/make-app-icons.js",
+    "build:web": "node scripts/build-web.js"
   },
   "keywords": [
     "phaser",
